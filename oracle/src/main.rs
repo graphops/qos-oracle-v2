@@ -1,0 +1,83 @@
+use std::{
+    env, fs::read_to_string, io::Write as _, net::SocketAddr, path::PathBuf, sync::Arc,
+    time::Duration,
+    thread, time
+};
+
+use anyhow::Context;
+use async_graphql::{http::GraphiQLSource, EmptyMutation, EmptySubscription, Schema};
+use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
+use axum::extract::State;
+use axum::{
+    http::{header, status::StatusCode, Method},
+    response::{self, IntoResponse},
+    routing::get,
+    Router,
+};
+use prometheus::{self, Encoder as _};
+use serde_with::DurationMilliSeconds;
+use thegraph::client as subgraph_client;
+use tokio::net::TcpListener;
+use tokio::sync::Mutex;
+use tower_http::cors::{Any, CorsLayer};
+use tracing_subscriber::{self, layer::SubscriberExt as _, util::SubscriberInitExt as _};
+
+use datasource::{CreateWithDatasourcePgArgs, DatasourcePostgres, GraphServiceDatasource};
+
+use crate::config::Config;
+
+mod config;
+
+
+#[tokio::main]
+pub async fn main() {
+    // the mounted config location is passed as an arg to the build.
+    // grab the config path value from the arg and attempt to load the config JSON and parse into a [`crate::config::Config`] instance.`
+    let config_path = env::args()
+        .nth(1)
+        .expect("Missing argument for config path")
+        .parse::<PathBuf>()
+        .unwrap();
+    let config_file_text = read_to_string(config_path.clone()).expect("Failed to open config");
+    let conf = serde_json::from_str::<Config>(&config_file_text)
+        .context("Failed to parse JSON config")
+        .unwrap();
+
+    let config_repr = format!("{conf:#?}");
+
+    init_tracing(conf.log_json);
+
+    tracing::info!("Graph Service Analytics API starting...");
+    tracing::debug!(conf = %config_repr);
+
+    let services_datasource =
+        GraphServiceDatasource::<DatasourcePostgres>::create_with_datasource_pg(
+            CreateWithDatasourcePgArgs {
+                kafka_config: conf.kafka.0.clone(),
+                kafka_topic_id: conf.kafka_topic_id,
+                postgres_db_url: conf.db_url,
+                num_workers: Some(2),
+            },
+        )
+        .await
+        .expect("Failure instantiating the `GraphServiceDatasource` instance");
+
+    loop {
+        thread::sleep(time::Duration::from_millis(1000));
+    }
+}
+
+fn init_tracing(json: bool) {
+    let filter_layer = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        tracing_subscriber::EnvFilter::try_new("info,graph_subscriptions_api=debug").unwrap()
+    });
+    let defaults = tracing_subscriber::registry().with(filter_layer);
+    let fmt_layer = tracing_subscriber::fmt::layer();
+    if json {
+        defaults
+            .with(fmt_layer.json().with_current_span(false))
+            .init();
+    } else {
+        defaults.with(fmt_layer).init();
+    }
+}

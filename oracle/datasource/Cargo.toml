@@ -1,0 +1,37 @@
+[package]
+name = "datasource"
+version = "0.1.0"
+edition = "2021"
+description = "Subpackage used to buildout and export the subscription stats datasource. Provides a generic, extendable, approach to retrieving the subscription stats logs from the kafka topic for consumption by the API"
+
+[lib]
+name = "datasource"
+path = "src/lib.rs"
+
+[dependencies]
+alloy-primitives = "0.5.4"
+anyhow = "1.0.79"
+async-trait = "0.1.77"
+chrono = { version = "0.4.31", default-features = false, features = ["clock", "std"] }
+entity = { path = "../entity" }
+eventuals = "0.6.7"
+futures = "0.3.30"
+lazy_static = "1.4.0"
+migration = { path = "../migration" }
+prost = "0.12.3"
+prost-types = "0.12.3"
+rdkafka = { version = "0.36.1", features = ["tracing", "gssapi-vendored", "ssl-vendored"] }
+sea-orm = { version = "0.12.10", features = [
+  "sqlx-postgres",
+  "macros",
+  "runtime-tokio-native-tls",
+  "with-chrono",
+  "with-uuid"
+] }
+serde = { version = "1.0.195", features = ["derive"] }
+serde_json = "1.0.111"
+thegraph = { git = "https://github.com/edgeandnode/toolshed", tag = "thegraph-v0.2.0", features = ["subscriptions"] }
+tokio = { version = "1.35.1", features = ["macros", "rt-multi-thread"] }
+toolshed = { git = "https://github.com/edgeandnode/toolshed", tag = "v0.4.0" }
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

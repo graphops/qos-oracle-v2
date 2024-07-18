@@ -1,0 +1,5 @@
+gen-entities:
+  # Generate entity files of database `gateway_client_query_results` to `entity/src`
+  sea-orm-cli generate entity -o src --with-serde both --lib
+  # Append handwritten trait implementations
+  echo "pub mod traits;\n" >> src/lib.rs

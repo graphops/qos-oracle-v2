@@ -1,0 +1,11 @@
+{
+  "main": "index.js",
+  "scripts": {
+    "start": "tsx kafka-producer.ts"
+  },
+  "type": "module",
+  "dependencies": {
+    "@types/node": "^20.14.11",
+    "tsx": "^4.16.2"
+  }
+}

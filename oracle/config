@@ -1,0 +1,22 @@
+{
+  "api_port": 4000,
+  "graphql_endpoint": "/graphql",
+  "metrics_port": 9090,
+  "log_json": true,
+  "network_subgraph_url": "https://api.thegraph.com/subgraphs/name/graphprotocol/graph-network-mainnet",
+  "api_service_url": "http://localhost:8070/graphql",
+  "api_service_token": "bonnie",
+  "gateway_base_url": "https://gateway-testnet-arbitrum.network.thegraph.com",
+  "kafka": {
+    "bootstrap.servers": "PLAINTEXT://127.0.0.1:9092",
+    "group.id": "graph-gateway",
+    "enable.partition.eof": "false",
+    "enable.auto.commit": "false"
+  },
+  "kafka_topic_id": "gateway_client_query_results",
+  "db_url": "postgres://postgres:dev@localhost:5432/gateway_client_query_results",
+  "notifications": {
+    "url": "http://api.studio.staging.thegraph.com/admin/v1/notifications",
+    "secret": ""
+  }
+}

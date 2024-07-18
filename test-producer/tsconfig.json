@@ -1,0 +1,13 @@
+{
+    "compilerOptions": {
+      "target": "ES2022", 
+      "module": "ES2022",
+      "outDir": "dist",     
+      "rootDir": ".",
+      "lib": ["WebWorker","es6", "es2022"],
+      "typeRoots": ["node_modules/@types"], /* Already included by default */
+      "types": ["node"],
+      "moduleResolution": "node",
+      "esModuleInterop": true
+    },
+  }
