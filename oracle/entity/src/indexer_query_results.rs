@@ -26,7 +26,7 @@ pub struct Model {
     #[sea_orm(column_type = "Float", nullable)]
     pub fee: Option<f32>,
     #[sea_orm(column_type = "Text", nullable)]
-    pub fee_usd: Option<String>,
+    pub ray_id: Option<String>,
     pub timestamp: Option<i64>,
     #[sea_orm(column_type = "Text", nullable)]
     pub gateway_id: Option<String>,

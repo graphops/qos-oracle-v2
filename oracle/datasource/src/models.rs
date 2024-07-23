@@ -4,48 +4,10 @@ use alloy_primitives::Address;
 use chrono::{DateTime, FixedOffset, Utc};
 use prost::Message;
 use sea_orm::FromQueryResult;
-use sea_orm::TryGetableFromJson;
 use serde::{Deserialize, Serialize};
 use thegraph::types::DeploymentId;
 
-use entity::notification;
-
 pub type Uuid = sea_orm::prelude::Uuid;
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Copy, Hash, Eq)]
-pub enum NotificationTopic {
-    BalanceRunningLow,
-    BalanceRanOut,
-}
-
-impl From<NotificationTopic> for i32 {
-    fn from(val: NotificationTopic) -> Self {
-        match val {
-            NotificationTopic::BalanceRunningLow => 0,
-            NotificationTopic::BalanceRanOut => 1,
-        }
-    }
-}
-
-impl From<i32> for NotificationTopic {
-    fn from(val: i32) -> Self {
-        match val {
-            0 => NotificationTopic::BalanceRunningLow,
-            1 => NotificationTopic::BalanceRanOut,
-            _ => panic!("Invalid notification topic"),
-        }
-    }
-}
-
-impl TryGetableFromJson for NotificationTopic {
-    fn try_get_from_json<I: sea_orm::ColIdx>(
-        res: &sea_orm::QueryResult,
-        idx: I,
-    ) -> Result<Self, sea_orm::TryGetError> {
-        let val: i32 = res.try_get_by(idx)?;
-        Ok(NotificationTopic::from(val))
-    }
-}
 
 #[derive(Clone, Deserialize, PartialEq, ::prost::Message)]
 pub struct GatewayClientQueryResult {
@@ -125,21 +87,19 @@ pub struct GatewayIndexerQueryResult {
     pub network: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(float, optional, tag = "14")]
     pub fee: ::core::option::Option<f32>,
-    #[prost(float, optional, tag = "15")]
-    pub fee_usd: ::core::option::Option<f32>,
-    #[prost(string, optional, tag = "16")]
+    #[prost(string, optional, tag = "15")]
     pub ray_id: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(int64, optional, tag = "17")]
+    #[prost(int64, optional, tag = "16")]
     pub timestamp: ::core::option::Option<i64>,
+    #[prost(int64, optional, tag = "17")]
+    pub seconds_behind: u32,
     #[prost(int64, optional, tag = "18")]
-    pub seconds_behind: ::core::option::Option<i64>,
-    #[prost(int64, optional, tag = "19")]
-    pub blocks_behind: ::core::option::Option<i64>,
-    #[prost(string, tag = "20")]
+    pub blocks_behind: u32,
+    #[prost(string, tag = "19")]
     pub gateway_id: ::prost::alloc::string::String,
-    #[prost(string, optional, tag = "21")]
+    #[prost(string, optional, tag = "20")]
     pub network_chain: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(string, optional, tag = "22")]
+    #[prost(string, optional, tag = "21")]
     pub indexed_chain: ::core::option::Option<::prost::alloc::string::String>,
 }
 

@@ -1,6 +1,6 @@
 use sea_orm_migration::{
     prelude::*,
-    sea_orm::{ConnectionTrait, EnumIter},
+    sea_orm::EnumIter,
     sea_query::extension::postgres::Type,
 };
 
@@ -147,17 +147,9 @@ pub enum IndexerQueryResult {
     GraphEnv,
     #[iden = "network"]
     Network,
-    // #[iden = "query_count"]
-    // QueryCount,
-    // #[iden = "budget"]
-    // Budget,
-    // #[iden = "budget_float"]
-    // BudgetFloat,
     #[iden = "fee"]
     Fee,
-    #[iden = "fee_usd"]
-    // FeeUsd,
-    // #[iden = "ray_id"]
+    #[iden = "ray_id"]
     RayId,
     #[iden = "timestamp"]
     Timestamp,
@@ -180,32 +172,6 @@ pub enum IndexerQueryResult {
     #[iden = "indexer_errors"]
     IndexerErrors,
 }
-
-// interface IndexerQueryFormat {
-//     "gateway_id": string, +
-//     "query_id": string, +
-//     "ray_id": string, +
-//     "network_chain": string, +
-//     "graph_env": string, +
-//     "timestamp": number, +
-//     "api_key": string, +
-//     "user_address": string, +
-//     "deployment": string, +
-//     "network": string, +
-//     "indexed_chain": string, +
-//     "indexer": string, +
-//     "url": string, +
-//     "fee": number, +
-//     "legacy_scalar": boolean, +
-//     "utility": number, +
-//     "seconds_behind": number, +
-//     "blocks_behind": number, +
-//     "response_time_ms": number, +
-//     "allocation": string, +
-//     "indexer_errors": string, +
-//     "status": string, +
-//     "status_code": string, +
-// }
 
 #[derive(Iden, EnumIter)]
 pub enum IndexerQueryResultStatus {

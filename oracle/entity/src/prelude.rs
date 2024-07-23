@@ -2,4 +2,3 @@
 
 pub use super::client_query_result::Entity as ClientQueryResult;
 pub use super::indexer_query_results::Entity as IndexerQueryResults;
-pub use super::notification::Entity as Notification;
