@@ -13,8 +13,11 @@
     "enable.partition.eof": "false",
     "enable.auto.commit": "false"
   },
-  "kafka_topic_id": "gateway_client_query_results",
-  "db_url": "postgres://postgres:dev@localhost:5432/gateway_client_query_results",
+  "kafka_topic_ids": [
+    "gateway_client_query_results",
+    "gateway_indexer_attempts"
+  ],
+  "db_url": "postgres://postgres:dev@localhost:5432/qos_oracle_v2",
   "notifications": {
     "url": "http://api.studio.staging.thegraph.com/admin/v1/notifications",
     "secret": ""

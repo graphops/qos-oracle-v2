@@ -41,8 +41,8 @@ pub struct Config {
     /// ```
     #[serde(default)]
     pub kafka: KafkaConfig,
-    /// The Kafka topic the gateway GSP query logs will be published to
-    pub kafka_topic_id: String,
+    /// The Kafka topics the gateway GSP query logs will be published to
+    pub kafka_topic_ids: Vec<String>,
     /// Postgres database url where the logs are stored.
     /// Uses format: "postgres://{user}:{pwd}@{host}:{port}/{database}"
     pub db_url: String,  
@@ -84,13 +84,16 @@ mod tests {
                 "enable.partition.eof": "false",
                 "enable.auto.commit": "false"
             },
-            "kafka_topic_id": "gateway_client_query_results",
+            "kafka_topic_ids": [
+                "gateway_client_query_results",
+                "gateway_indexer_attempts"
+            ],
             "db_url": "postgres://dev:dev@localhost:5432/gateway_client_query_results",
         }
         "#;
         let expected_kafka_config = KafkaConfig::default();
         let expected = Config {
-            kafka_topic_id: "gateway_client_query_results".to_string(),
+            kafka_topic_ids: Vec::from(["gateway_client_query_results".to_string(),"gateway_indexer_attempts".to_string()]),
             db_url: "postgres://dev:dev@localhost:5432/gateway_client_query_results".to_string(),
             kafka: expected_kafka_config,
             log_json: true,
@@ -99,7 +102,7 @@ mod tests {
         match serde_json::from_str::<Config>(config_raw) {
             Ok(actual) => {
                 // spot check
-                assert_eq!(actual.kafka_topic_id, expected.kafka_topic_id);
+                assert_eq!(actual.kafka_topic_ids, expected.kafka_topic_ids);
                 assert_eq!(actual.db_url, expected.db_url);
                 assert_eq!(actual.kafka.clone(), expected.kafka.clone());
             }

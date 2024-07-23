@@ -9,7 +9,7 @@ use rdkafka::{
 #[derive(Debug)]
 pub struct ConsumerConfig {
     /// The Graph Client query result logs kafka topic id
-    pub topic_id: String,
+    pub topic_ids: Vec<String>,
     /// Kafka consumer configuration paramaters
     pub config: BTreeMap<String, String>,
 }
@@ -35,7 +35,9 @@ impl LogConsumer {
         let consumer: StreamConsumer<DefaultConsumerContext> =
             binding.create_with_context(DefaultConsumerContext)?;
         // subscribe StreamConsumer to given topic
-        consumer.subscribe(&[&config.topic_id])?;
+        let pos: Vec<&str> = config.topic_ids.iter().map(AsRef::as_ref).collect();
+        let topics = pos.as_slice();
+        consumer.subscribe(topics)?;
 
         tracing::info!("LogConsumer::create()::consumer started. listening on topic...");
 

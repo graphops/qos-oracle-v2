@@ -20,7 +20,7 @@ where
 
 pub struct CreateWithDatasourcePgArgs {
     /// The graph gateway query logs topic id
-    pub kafka_topic_id: String,
+    pub kafka_topic_ids: Vec<String>,
     /// Connection/configuration parameters.
     /// For example, to connect via SSL to the kafka broker, etc.
     /// Thesese key-values are _required_:
@@ -71,7 +71,7 @@ impl<T: Datasource> GraphServiceDatasource<'_, T> {
     ) -> Result<GraphServiceDatasource<'static, DatasourcePostgres>> {
         // instantiate the consumer instance
         let log_consumer = LogConsumer::create(ConsumerConfig {
-            topic_id: args.kafka_topic_id,
+            topic_ids: args.kafka_topic_ids,
             config: args.kafka_config,
         })?;
         // instantiate the postgres datasource instance and begin consuming messages

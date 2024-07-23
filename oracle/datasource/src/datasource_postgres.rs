@@ -117,39 +117,7 @@ impl DatasourcePostgres {
 
         Ok(Box::leak(Box::new(Self { db_conn })))
     }
-    /// Get a list of unique deployment qm hashses from the database for the query key
-    pub async fn uniq_deployments_for_key(
-        &self,
-        user: Address,
-        api_key: String,
-    ) -> anyhow::Result<Vec<UniqQueryKeyDeploymentQmHash>> {
-        UniqQueryKeyDeploymentQmHash::find_by_statement(Statement::from_sql_and_values(
-            sea_orm::DatabaseBackend::Postgres,
-            r#"SELECT DISTINCT deployment FROM client_query_result WHERE user_address = $1 AND api_key = $2 AND deployment IS NOT NULL"#,
-            [format!("{user:#x}").into(), api_key.into()],
-        ))
-        .all(&self.db_conn)
-        .await
-        .map_err(anyhow::Error::from)
-    }
-    /// Check if the user has "access" to the api_key.
-    /// Access is determined if a record exists in the logs db matching the `user` and `api_key`
-    pub async fn user_has_key_access(
-        &self,
-        user: Address,
-        api_key: String,
-    ) -> anyhow::Result<bool> {
-        let result = UserHasKeyResult::find_by_statement(Statement::from_sql_and_values(
-            sea_orm::DatabaseBackend::Postgres,
-            r#"SELECT CASE WHEN COUNT(id) >= 1 THEN true ELSE false END AS user_has_key FROM client_query_result WHERE user_address = $1 AND api_key = $2"#,
-            [format!("{user:#x}").into(), api_key.into()],
-        )).one(&self.db_conn)
-        .await
-        .map_err(anyhow::Error::from)?
-        .unwrap_or_default();
 
-        Ok(result.user_has_key)
-    }
 }
 
 #[async_trait]
@@ -486,8 +454,8 @@ impl DatasourceWriter for DatasourcePostgres {
                     query_count: Set(query_result_msg.query_count),
                     status_code: Set(entity::sea_orm_active_enums::ClientQueryResultStatus::from(query_result_msg.status_code)),
                     status: Set(Some(query_result_msg.status)),
-                    graph_env: Set(query_result_msg.graph_env),
-                    network: Set(query_result_msg.network),
+                    graph_env: Set(query_result_msg.graph_env.clone()),
+                    network: Set(query_result_msg.network.clone()),
                     response_time_ms: Set(query_result_msg.response_time_ms.try_into().unwrap_or(0)),
                     budget: Set(query_result_msg.budget),
                     budget_float: Set(query_result_msg.budget_float),
@@ -495,6 +463,9 @@ impl DatasourceWriter for DatasourcePostgres {
                     fee_usd: Set(query_result_msg.fee_usd),
                     ray_id: Set(query_result_msg.ray_id),
                     timestamp: Set(query_result_msg.timestamp),
+                    gateway_id: Set(Some(query_result_msg.gateway_id)),
+                    network_chain: Set(query_result_msg.graph_env.clone()),
+                    indexed_chain: Set(query_result_msg.network.clone()),
                 };
 
                 //tracing::info!("Result record generated. query_id: {}", &result_record.query_id.unwrap());

@@ -54,7 +54,7 @@ pub async fn main() {
         GraphServiceDatasource::<DatasourcePostgres>::create_with_datasource_pg(
             CreateWithDatasourcePgArgs {
                 kafka_config: conf.kafka.0.clone(),
-                kafka_topic_id: conf.kafka_topic_id,
+                kafka_topic_ids: conf.kafka_topic_ids,
                 postgres_db_url: conf.db_url,
                 num_workers: Some(2),
             },

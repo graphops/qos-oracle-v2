@@ -98,6 +98,9 @@ impl MigrationTrait for Migration {
                             .big_integer()
                             .null(),
                     )
+                    .col(ColumnDef::new(ClientQueryResult::GatewayId).text().null())
+                    .col(ColumnDef::new(ClientQueryResult::NetworkChain).text().null())
+                    .col(ColumnDef::new(ClientQueryResult::IndexedChain).text().null())
                     .to_owned(),
             )
             .await?;
@@ -206,6 +209,12 @@ pub enum ClientQueryResult {
     RayId,
     #[iden = "timestamp"]
     Timestamp,
+    #[iden = "gateway_id"]
+    GatewayId,
+    #[iden = "network_chain"]
+    NetworkChain,
+    #[iden = "indexed_chain"]
+    IndexedChain,
 }
 
 #[derive(Iden, EnumIter)]
