@@ -11,7 +11,6 @@ impl From<i32> for ClientQueryResultStatus {
     }
 }
 
-
 impl From<i32> for IndexerQueryResultsStatus {
     fn from(val: i32) -> Self {
         match val {

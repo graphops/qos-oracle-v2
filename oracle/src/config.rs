@@ -48,6 +48,7 @@ pub struct Config {
     pub db_url: String,  
     /// Format log output as JSON
     pub log_json: bool,
+    pub consumer_num: i32,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]

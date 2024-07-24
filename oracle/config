@@ -21,5 +21,6 @@
   "notifications": {
     "url": "http://api.studio.staging.thegraph.com/admin/v1/notifications",
     "secret": ""
-  }
+  },
+  "consumer_num": 2
 }

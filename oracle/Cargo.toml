@@ -1,8 +1,8 @@
 [package]
-name = "graph-subscriptions-api"
+name = "qos-oracle-v2"
 version = "0.1.0"
 edition = "2021"
-description = "GraphQL API to expose graph subscription tickets and stats"
+description = "Standalone QoS Oracle for the Graph Network"
 
 [workspace]
 members = [".", "datasource", "migration", "entity"]

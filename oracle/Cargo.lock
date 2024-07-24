@@ -2282,40 +2282,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "graph-subscriptions-api"
-version = "0.1.0"
-dependencies = [
- "alloy-primitives",
- "anyhow",
- "async-graphql 7.0.7",
- "async-graphql-axum",
- "async-trait",
- "axum",
- "axum-extra",
- "bigdecimal 0.4.5",
- "chrono",
- "datasource",
- "eventuals",
- "futures",
- "graph-subscriptions",
- "headers",
- "num-traits",
- "prometheus",
- "reqwest",
- "serde",
- "serde_json",
- "serde_with 3.9.0",
- "sha3",
- "thegraph",
- "thiserror",
- "tokio",
- "toolshed",
- "tower-http",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "graphql-http"
 version = "0.1.1"
 source = "git+https://github.com/edgeandnode/toolshed.git?tag=graphql-http-v0.1.1#1eb97feb7b188324529926300135ffe723989c10"
@@ -3951,6 +3917,40 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "qos-oracle-v2"
+version = "0.1.0"
+dependencies = [
+ "alloy-primitives",
+ "anyhow",
+ "async-graphql 7.0.7",
+ "async-graphql-axum",
+ "async-trait",
+ "axum",
+ "axum-extra",
+ "bigdecimal 0.4.5",
+ "chrono",
+ "datasource",
+ "eventuals",
+ "futures",
+ "graph-subscriptions",
+ "headers",
+ "num-traits",
+ "prometheus",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_with 3.9.0",
+ "sha3",
+ "thegraph",
+ "thiserror",
+ "tokio",
+ "toolshed",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

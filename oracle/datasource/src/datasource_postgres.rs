@@ -14,7 +14,6 @@ use sea_orm::{
     DatabaseConnection, Set,
 };
 
-
 use migration::MigratorTrait;
 
 use crate::{
@@ -65,7 +64,6 @@ impl Datasource for DatasourceClientQueryPostgres {
 
         Ok(Box::leak(Box::new(Self { db_conn })))
     }
-
 }
 
 #[async_trait]
@@ -91,7 +89,6 @@ impl Datasource for DatasourceIndexerQueryPostgres {
 
         Ok(Box::leak(Box::new(Self { db_conn })))
     }
-
 }
 
 #[async_trait]
@@ -208,10 +205,10 @@ impl DatasourceWriter for DatasourceIndexerQueryPostgres {
                     gateway_id: Set(Some(query_result_msg.gateway_id)),
                     network_chain: Set(query_result_msg.graph_env.clone()),
                     indexed_chain: Set(query_result_msg.network.clone()),
-                    indexer: Set(query_result_msg.network.clone()),
-                    url: Set(query_result_msg.network.clone()),
-                    allocation: Set(query_result_msg.network.clone()),
-                    indexer_errors: Set(query_result_msg.network.clone()),
+                    indexer: Set(query_result_msg.indexer.clone()),
+                    url: Set(query_result_msg.url.clone()),
+                    allocation: Set(query_result_msg.allocation.clone()),
+                    indexer_errors: Set(query_result_msg.indexer_errors.clone()),
                     seconds_behind: Set(query_result_msg.seconds_behind.try_into().unwrap_or(0)),
                     blocks_behind: Set(query_result_msg.blocks_behind.try_into().unwrap_or(0)),
                 };

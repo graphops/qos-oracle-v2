@@ -1,5 +1,3 @@
-use anyhow::{Ok, Result};
-
 mod consumer;
 mod datasource_postgres;
 mod datasource_trait;
@@ -8,15 +6,7 @@ mod models;
 pub use datasource_postgres::{DatasourceClientQueryPostgres, DatasourceIndexerQueryPostgres};
 pub use datasource_trait::{Datasource, DatasourceWriter};
 pub use models::*;
-
-use consumer::{ConsumerConfig, LogConsumer};
-
-pub struct GraphServiceDatasource<'a, T>
-where
-    T: Datasource,
-{
-    pub datasource: &'a T,
-}
+pub use consumer::*;
 
 pub struct CreateWithDatasourcePgArgs {
     /// The graph gateway query logs topic id
@@ -63,48 +53,4 @@ pub struct CreateWithDatasourcePgArgs {
     /// Number of work threads to spin up which listen on the kafka message consumer and write to the db.
     /// Default value is: 1
     pub num_workers: Option<usize>,
-}
-
-impl<T: Datasource> GraphServiceDatasource<'_, T> {
-    pub async fn create_with_client_datasource_pg(
-        args: CreateWithDatasourcePgArgs,
-    ) -> Result<GraphServiceDatasource<'static, DatasourceClientQueryPostgres>> {
-        // instantiate the consumer instance
-        let log_consumer = LogConsumer::create(ConsumerConfig {
-            topic_ids: args.kafka_topic_ids,
-            config: args.kafka_config,
-        })?;
-        // instantiate the postgres datasource instance and begin consuming messages
-        let datasource_pg = DatasourceClientQueryPostgres::create(args.postgres_db_url).await?;
-
-        for _ in 0..args.num_workers.unwrap_or(1) {
-            tokio::spawn(datasource_pg.write(&log_consumer.consumer));
-        }
-
-        Ok(GraphServiceDatasource::<DatasourceClientQueryPostgres> {
-            datasource: datasource_pg,
-        })
-    }
-}
-
-impl<T: Datasource> GraphServiceDatasource<'_, T> {
-    pub async fn create_with_indexer_datasource_pg(
-        args: CreateWithDatasourcePgArgs,
-    ) -> Result<GraphServiceDatasource<'static, DatasourceIndexerQueryPostgres>> {
-        // instantiate the consumer instance
-        let log_consumer = LogConsumer::create(ConsumerConfig {
-            topic_ids: args.kafka_topic_ids,
-            config: args.kafka_config,
-        })?;
-        // instantiate the postgres datasource instance and begin consuming messages
-        let datasource_pg = DatasourceIndexerQueryPostgres::create(args.postgres_db_url).await?;
-
-        for _ in 0..args.num_workers.unwrap_or(1) {
-            tokio::spawn(datasource_pg.write(&log_consumer.consumer));
-        }
-
-        Ok(GraphServiceDatasource::<DatasourceIndexerQueryPostgres> {
-            datasource: datasource_pg,
-        })
-    }
 }

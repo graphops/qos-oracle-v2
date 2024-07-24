@@ -1,7 +1,6 @@
 use std::{
-    env, fs::read_to_string, io::Write as _, net::SocketAddr, path::PathBuf, sync::Arc,
-    time::Duration,
-    thread, time
+    env, fs::read_to_string, io::Write as _, net::SocketAddr, path::PathBuf, sync::Arc, thread,
+    time, time::Duration,
 };
 
 use anyhow::Context;
@@ -22,12 +21,14 @@ use tokio::sync::Mutex;
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{self, layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
-use datasource::{CreateWithDatasourcePgArgs, DatasourcePostgres, GraphServiceDatasource};
+use datasource::{
+    CreateWithDatasourcePgArgs, Datasource, DatasourceClientQueryPostgres,
+    DatasourceIndexerQueryPostgres, DatasourceWriter, LogConsumer,
+};
 
 use crate::config::Config;
 
 mod config;
-
 
 #[tokio::main]
 pub async fn main() {
@@ -61,6 +62,27 @@ pub async fn main() {
         )
         .await
         .expect("Failure instantiating the `GraphServiceDatasource` instance");
+
+    // instantiate the postgres datasource instance and begin consuming messages
+    let datasource_client_query =
+        LogConsumer::create_with_client_datasource_pg(CreateWithDatasourcePgArgs {
+            kafka_config: conf.kafka.0.clone(),
+            kafka_topic_ids: [conf.kafka_topic_ids[0]].to_vec(),
+            postgres_db_url: conf.db_url,
+            num_workers: Some(2),
+        })
+        .await
+        .expect("Failure instantiating GatewayQueryClientConsumer");
+    // instantiate the postgres datasource instance and begin consuming messages
+    let datasource_indexer_query =
+        LogConsumer::create_with_indexer_datasource_pg(CreateWithDatasourcePgArgs {
+            kafka_config: conf.kafka.0.clone(),
+            kafka_topic_ids: [conf.kafka_topic_ids[1]].to_vec(),
+            postgres_db_url: conf.db_url,
+            num_workers: Some(2),
+        })
+        .await
+        .expect("Failure instantiating GatewayIndexerClientConsumer");
 
     loop {
         thread::sleep(time::Duration::from_millis(1000));

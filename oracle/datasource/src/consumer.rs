@@ -6,6 +6,8 @@ use rdkafka::{
     ClientConfig,
 };
 
+use crate::{CreateWithDatasourcePgArgs, Datasource, DatasourceClientQueryPostgres, DatasourceIndexerQueryPostgres, DatasourceWriter};
+
 #[derive(Debug)]
 pub struct ConsumerConfig {
     /// The Graph Client query result logs kafka topic id
@@ -42,5 +44,41 @@ impl LogConsumer {
         tracing::info!("LogConsumer::create()::consumer started. listening on topic...");
 
         Ok(Box::leak(Box::new(Self { consumer })))
+    }
+
+    pub async fn create_with_indexer_datasource_pg(
+        args: CreateWithDatasourcePgArgs,
+    ) -> Result<&'static DatasourceIndexerQueryPostgres> {
+        // instantiate the consumer instance
+        let log_consumer = LogConsumer::create(ConsumerConfig {
+            topic_ids: args.kafka_topic_ids,
+            config: args.kafka_config,
+        })?;
+        // instantiate the postgres datasource instance and begin consuming messages
+        let datasource_pg = DatasourceIndexerQueryPostgres::create(args.postgres_db_url).await?;
+    
+        for _ in 0..args.num_workers.unwrap_or(1) {
+            tokio::spawn(datasource_pg.write(&log_consumer.consumer));
+        }
+    
+        Ok(datasource_pg)
+    }
+
+    pub async fn create_with_client_datasource_pg(
+        args: CreateWithDatasourcePgArgs,
+    ) -> Result<&'static DatasourceClientQueryPostgres> {
+        // instantiate the consumer instance
+        let log_consumer = LogConsumer::create(ConsumerConfig {
+            topic_ids: args.kafka_topic_ids,
+            config: args.kafka_config,
+        })?;
+        // instantiate the postgres datasource instance and begin consuming messages
+        let datasource_pg = DatasourceClientQueryPostgres::create(args.postgres_db_url).await?;
+    
+        for _ in 0..args.num_workers.unwrap_or(1) {
+            tokio::spawn(datasource_pg.write(&log_consumer.consumer));
+        }
+    
+        Ok(datasource_pg)
     }
 }
