@@ -1,7 +1,7 @@
-use std::{collections::BTreeMap, fmt};
+use std::collections::BTreeMap;
 
 use serde::Deserialize;
-use serde_with::{serde_as, DisplayFromStr};
+use serde_with::serde_as;
 
 #[serde_as]
 #[derive(Debug, Clone, Deserialize)]
@@ -44,7 +44,7 @@ pub struct Config {
     pub kafka_topic_ids: Vec<String>,
     /// Postgres database url where the logs are stored.
     /// Uses format: "postgres://{user}:{pwd}@{host}:{port}/{database}"
-    pub db_url: String,  
+    pub db_url: String,
     /// Format log output as JSON
     pub log_json: bool,
     pub consumer_num: i32,
@@ -93,7 +93,10 @@ mod tests {
         "#;
         let expected_kafka_config = KafkaConfig::default();
         let expected = Config {
-            kafka_topic_ids: Vec::from(["gateway_client_query_results".to_string(),"gateway_indexer_attempts".to_string()]),
+            kafka_topic_ids: Vec::from([
+                "gateway_client_query_results".to_string(),
+                "gateway_indexer_attempts".to_string(),
+            ]),
             db_url: "postgres://dev:dev@localhost:5432/gateway_client_query_results".to_string(),
             kafka: expected_kafka_config,
             log_json: true,

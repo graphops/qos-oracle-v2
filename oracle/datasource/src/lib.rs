@@ -3,10 +3,10 @@ mod datasource_postgres;
 mod datasource_trait;
 mod models;
 
+pub use consumer::*;
 pub use datasource_postgres::{DatasourceClientQueryPostgres, DatasourceIndexerQueryPostgres};
 pub use datasource_trait::{Datasource, DatasourceWriter};
 pub use models::*;
-pub use consumer::*;
 
 pub struct CreateWithDatasourcePgArgs {
     /// The graph gateway query logs topic id

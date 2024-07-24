@@ -1,8 +1,4 @@
-use sea_orm_migration::{
-    prelude::*,
-    sea_orm::EnumIter,
-    sea_query::extension::postgres::Type,
-};
+use sea_orm_migration::{prelude::*, sea_orm::EnumIter, sea_query::extension::postgres::Type};
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -37,7 +33,11 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(IndexerQueryResult::QueryId).text().not_null())
+                    .col(
+                        ColumnDef::new(IndexerQueryResult::QueryId)
+                            .text()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(IndexerQueryResult::UserAddress)
                             .text()
@@ -81,12 +81,24 @@ impl MigrationTrait for Migration {
                             .null(),
                     )
                     .col(ColumnDef::new(IndexerQueryResult::GatewayId).text().null())
-                    .col(ColumnDef::new(IndexerQueryResult::NetworkChain).text().null())
-                    .col(ColumnDef::new(IndexerQueryResult::IndexedChain).text().null())
+                    .col(
+                        ColumnDef::new(IndexerQueryResult::NetworkChain)
+                            .text()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(IndexerQueryResult::IndexedChain)
+                            .text()
+                            .null(),
+                    )
                     .col(ColumnDef::new(IndexerQueryResult::Indexer).text().null())
                     .col(ColumnDef::new(IndexerQueryResult::Url).text().null())
                     .col(ColumnDef::new(IndexerQueryResult::Allocation).text().null())
-                    .col(ColumnDef::new(IndexerQueryResult::IndexerErrors).text().null())
+                    .col(
+                        ColumnDef::new(IndexerQueryResult::IndexerErrors)
+                            .text()
+                            .null(),
+                    )
                     .col(
                         ColumnDef::new(IndexerQueryResult::SecondsBehind)
                             .integer()
@@ -102,7 +114,7 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
-        
+
         Ok(())
     }
 

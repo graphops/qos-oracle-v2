@@ -99,8 +99,16 @@ impl MigrationTrait for Migration {
                             .null(),
                     )
                     .col(ColumnDef::new(ClientQueryResult::GatewayId).text().null())
-                    .col(ColumnDef::new(ClientQueryResult::NetworkChain).text().null())
-                    .col(ColumnDef::new(ClientQueryResult::IndexedChain).text().null())
+                    .col(
+                        ColumnDef::new(ClientQueryResult::NetworkChain)
+                            .text()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(ClientQueryResult::IndexedChain)
+                            .text()
+                            .null(),
+                    )
                     .to_owned(),
             )
             .await?;

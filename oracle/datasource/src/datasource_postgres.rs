@@ -9,16 +9,11 @@ use rdkafka::{
     error::KafkaError,
     Message,
 };
-use sea_orm::{
-    prelude::Uuid, ActiveModelTrait, ConnectOptions, Database,
-    DatabaseConnection, Set,
-};
+use sea_orm::{prelude::Uuid, ActiveModelTrait, ConnectOptions, Database, DatabaseConnection, Set};
 
 use migration::MigratorTrait;
 
-use crate::{
-    Datasource, DatasourceWriter, GatewayClientQueryResult, GatewayIndexerQueryResult,
-};
+use crate::{Datasource, DatasourceWriter, GatewayClientQueryResult, GatewayIndexerQueryResult};
 
 lazy_static! {
     static ref CHAIN_ID: u64 = env::var("CHAIN_ID")
@@ -161,7 +156,6 @@ impl DatasourceWriter for DatasourceClientQueryPostgres {
         tracing::info!("DatasourcePostgres.write()::message stream consumer terminated");
     }
 }
-
 
 #[async_trait]
 impl DatasourceWriter for DatasourceIndexerQueryPostgres {

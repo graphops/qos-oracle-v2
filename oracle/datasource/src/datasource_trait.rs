@@ -2,7 +2,6 @@ use anyhow::Result;
 use async_trait::async_trait;
 use rdkafka::consumer::{DefaultConsumerContext, StreamConsumer};
 
-
 #[async_trait]
 /// Define an extentable trait that defines common creation methods
 pub trait Datasource {

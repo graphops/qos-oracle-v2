@@ -1,30 +1,10 @@
-use std::{
-    env, fs::read_to_string, io::Write as _, net::SocketAddr, path::PathBuf, sync::Arc, thread,
-    time, time::Duration,
-};
+use std::{env, fs::read_to_string, path::PathBuf, thread, time};
 
 use anyhow::Context;
-use async_graphql::{http::GraphiQLSource, EmptyMutation, EmptySubscription, Schema};
-use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
-use axum::extract::State;
-use axum::{
-    http::{header, status::StatusCode, Method},
-    response::{self, IntoResponse},
-    routing::get,
-    Router,
-};
-use prometheus::{self, Encoder as _};
-use serde_with::DurationMilliSeconds;
-use thegraph::client as subgraph_client;
-use tokio::net::TcpListener;
-use tokio::sync::Mutex;
-use tower_http::cors::{Any, CorsLayer};
+
 use tracing_subscriber::{self, layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
-use datasource::{
-    CreateWithDatasourcePgArgs, Datasource, DatasourceClientQueryPostgres,
-    DatasourceIndexerQueryPostgres, DatasourceWriter, LogConsumer,
-};
+use datasource::{CreateWithDatasourcePgArgs, LogConsumer};
 
 use crate::config::Config;
 
@@ -52,7 +32,7 @@ pub async fn main() {
     tracing::debug!(conf = %config_repr);
 
     // instantiate the postgres datasource instance and begin consuming messages
-    let datasource_client_query =
+    let _datasource_client_query =
         LogConsumer::create_with_client_datasource_pg(CreateWithDatasourcePgArgs {
             kafka_config: conf.kafka.0.clone(),
             kafka_topic_ids: [conf.kafka_topic_ids[0].clone()].to_vec(),
@@ -62,7 +42,7 @@ pub async fn main() {
         .await
         .expect("Failure instantiating GatewayQueryClientConsumer");
     // instantiate the postgres datasource instance and begin consuming messages
-    let datasource_indexer_query =
+    let _datasource_indexer_query =
         LogConsumer::create_with_indexer_datasource_pg(CreateWithDatasourcePgArgs {
             kafka_config: conf.kafka.0.clone(),
             kafka_topic_ids: [conf.kafka_topic_ids[1].clone()].to_vec(),

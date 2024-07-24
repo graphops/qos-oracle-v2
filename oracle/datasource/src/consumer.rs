@@ -6,7 +6,10 @@ use rdkafka::{
     ClientConfig,
 };
 
-use crate::{CreateWithDatasourcePgArgs, Datasource, DatasourceClientQueryPostgres, DatasourceIndexerQueryPostgres, DatasourceWriter};
+use crate::{
+    CreateWithDatasourcePgArgs, Datasource, DatasourceClientQueryPostgres,
+    DatasourceIndexerQueryPostgres, DatasourceWriter,
+};
 
 #[derive(Debug)]
 pub struct ConsumerConfig {
@@ -56,11 +59,11 @@ impl LogConsumer {
         })?;
         // instantiate the postgres datasource instance and begin consuming messages
         let datasource_pg = DatasourceIndexerQueryPostgres::create(args.postgres_db_url).await?;
-    
+
         for _ in 0..args.num_workers.unwrap_or(1) {
             tokio::spawn(datasource_pg.write(&log_consumer.consumer));
         }
-    
+
         Ok(datasource_pg)
     }
 
@@ -74,11 +77,11 @@ impl LogConsumer {
         })?;
         // instantiate the postgres datasource instance and begin consuming messages
         let datasource_pg = DatasourceClientQueryPostgres::create(args.postgres_db_url).await?;
-    
+
         for _ in 0..args.num_workers.unwrap_or(1) {
             tokio::spawn(datasource_pg.write(&log_consumer.consumer));
         }
-    
+
         Ok(datasource_pg)
     }
 }
