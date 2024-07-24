@@ -51,24 +51,12 @@ pub async fn main() {
     tracing::info!("Graph Service Analytics API starting...");
     tracing::debug!(conf = %config_repr);
 
-    let services_datasource =
-        GraphServiceDatasource::<DatasourcePostgres>::create_with_datasource_pg(
-            CreateWithDatasourcePgArgs {
-                kafka_config: conf.kafka.0.clone(),
-                kafka_topic_ids: conf.kafka_topic_ids,
-                postgres_db_url: conf.db_url,
-                num_workers: Some(2),
-            },
-        )
-        .await
-        .expect("Failure instantiating the `GraphServiceDatasource` instance");
-
     // instantiate the postgres datasource instance and begin consuming messages
     let datasource_client_query =
         LogConsumer::create_with_client_datasource_pg(CreateWithDatasourcePgArgs {
             kafka_config: conf.kafka.0.clone(),
-            kafka_topic_ids: [conf.kafka_topic_ids[0]].to_vec(),
-            postgres_db_url: conf.db_url,
+            kafka_topic_ids: [conf.kafka_topic_ids[0].clone()].to_vec(),
+            postgres_db_url: conf.db_url.clone(),
             num_workers: Some(2),
         })
         .await
@@ -77,8 +65,8 @@ pub async fn main() {
     let datasource_indexer_query =
         LogConsumer::create_with_indexer_datasource_pg(CreateWithDatasourcePgArgs {
             kafka_config: conf.kafka.0.clone(),
-            kafka_topic_ids: [conf.kafka_topic_ids[1]].to_vec(),
-            postgres_db_url: conf.db_url,
+            kafka_topic_ids: [conf.kafka_topic_ids[1].clone()].to_vec(),
+            postgres_db_url: conf.db_url.clone(),
             num_workers: Some(2),
         })
         .await

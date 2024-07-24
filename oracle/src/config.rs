@@ -2,7 +2,6 @@ use std::{collections::BTreeMap, fmt};
 
 use serde::Deserialize;
 use serde_with::{serde_as, DisplayFromStr};
-use toolshed::url::Url;
 
 #[serde_as]
 #[derive(Debug, Clone, Deserialize)]
@@ -98,6 +97,7 @@ mod tests {
             db_url: "postgres://dev:dev@localhost:5432/gateway_client_query_results".to_string(),
             kafka: expected_kafka_config,
             log_json: true,
+            consumer_num: 1,
         };
 
         match serde_json::from_str::<Config>(config_raw) {
