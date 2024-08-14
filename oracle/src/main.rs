@@ -1,19 +1,17 @@
-use std::{env, fs::read_to_string, path::PathBuf, thread, time};
-
 use anyhow::Context;
-
+use chrono::{DateTime, Utc};
+use datasource::{logs::*, processing::*, CreateWithDatasourcePgArgs, LogConsumer};
+use std::{env, fs::read_to_string, path::PathBuf};
+use tokio::time::{interval, Duration};
 use tracing_subscriber::{self, layer::SubscriberExt as _, util::SubscriberInitExt as _};
-
-use datasource::{CreateWithDatasourcePgArgs, LogConsumer};
 
 use crate::config::Config;
 
 mod config;
 
 #[tokio::main]
-pub async fn main() {
-    // the mounted config location is passed as an arg to the build.
-    // grab the config path value from the arg and attempt to load the config JSON and parse into a [`crate::config::Config`] instance.`
+async fn main() -> anyhow::Result<()> {
+    // Load configuration
     let config_path = env::args()
         .nth(1)
         .expect("Missing argument for config path")
@@ -31,35 +29,75 @@ pub async fn main() {
     tracing::info!("Graph Service Analytics API starting...");
     tracing::debug!(conf = %config_repr);
 
-    // instantiate the postgres datasource instance and begin consuming messages
+    // Connect to the database
+    let db_config = DbConfig {
+        url: conf.db_url.clone(),
+    };
+    let db_conn = connect(&db_config).await?;
+
+    // Start Kafka consumers
     let _datasource_client_query =
         LogConsumer::create_with_client_datasource_pg(CreateWithDatasourcePgArgs {
             kafka_config: conf.kafka.0.clone(),
             kafka_topic_ids: [conf.kafka_topic_ids[0].clone()].to_vec(),
             postgres_db_url: conf.db_url.clone(),
-            num_workers: Some(2),
+            num_workers: Some(conf.consumer_num as usize),
         })
         .await
         .expect("Failure instantiating GatewayQueryClientConsumer");
-    // instantiate the postgres datasource instance and begin consuming messages
+
     let _datasource_indexer_query =
         LogConsumer::create_with_indexer_datasource_pg(CreateWithDatasourcePgArgs {
             kafka_config: conf.kafka.0.clone(),
             kafka_topic_ids: [conf.kafka_topic_ids[1].clone()].to_vec(),
             postgres_db_url: conf.db_url.clone(),
-            num_workers: Some(2),
+            num_workers: Some(conf.consumer_num as usize),
         })
         .await
         .expect("Failure instantiating GatewayIndexerClientConsumer");
 
+    // Start the processing loop
+    let mut interval = interval(Duration::from_secs(300)); // 5 minutes
     loop {
-        thread::sleep(time::Duration::from_millis(1000));
+        interval.tick().await;
+        let now = Utc::now();
+        let bucket_start_time = now - chrono::Duration::minutes(5);
+
+        // Process indexer query results
+        match get_gateway_indexer_query_results_for_time_bucket(&db_conn, bucket_start_time).await {
+            Ok(indexer_results) => {
+                for (indexer, bucket) in indexer_results {
+                    // Process and potentially publish to IPFS
+                    if let Err(e) =
+                        process_and_publish_indexer_data(&db_conn, indexer, bucket).await
+                    {
+                        tracing::error!("Error processing indexer data: {:?}", e);
+                    }
+                }
+            }
+            Err(e) => tracing::error!("Error fetching indexer query results: {:?}", e),
+        }
+
+        // Process client query results
+        match get_gateway_client_query_results_for_time_bucket(&db_conn, bucket_start_time).await {
+            Ok(client_results) => {
+                for (deployment, bucket) in client_results {
+                    // Process and potentially publish to IPFS
+                    if let Err(e) =
+                        process_and_publish_client_data(&db_conn, deployment, bucket).await
+                    {
+                        tracing::error!("Error processing client data: {:?}", e);
+                    }
+                }
+            }
+            Err(e) => tracing::error!("Error fetching client query results: {:?}", e),
+        }
     }
 }
 
 fn init_tracing(json: bool) {
     let filter_layer = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        tracing_subscriber::EnvFilter::try_new("info,graph_subscriptions_api=debug").unwrap()
+        tracing_subscriber::EnvFilter::try_new("info,qos_oracle_v2=debug").unwrap()
     });
     let defaults = tracing_subscriber::registry().with(filter_layer);
     let fmt_layer = tracing_subscriber::fmt::layer();

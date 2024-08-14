@@ -56,15 +56,15 @@ const indexerTopic = "gateway_indexer_attempts"
 let topics = [queryTopic, indexerTopic]
 
 let baseValueClient = {
-  "gateway_id": "",
-  "query_id": "Query ID",
+  "gateway_id": "Gateway ID",
+  "query_id": "",
   "ray_id": "Ray ID",
   "network_chain": "mainnet",
   "graph_env": "mainnet",
   "timestamp": 0,
   "api_key": "API KEY",
   "user": "USER",
-  "deployment": "Qm...",
+  "deployment": "",
   "network": "arbitrum-one",
   "indexed_chain": "arbitrum-one",
   "response_time_ms": 100,
@@ -78,15 +78,15 @@ let baseValueClient = {
 
 
 let baseValueIndexer = {
-  "gateway_id": "",
-  "query_id": "Query ID",
+  "gateway_id": "Gateway ID",
+  "query_id": "",
   "ray_id": "Ray ID",
   "network_chain": "mainnet",
   "graph_env": "mainnet",
   "timestamp": 0,
   "api_key": "API KEY",
   "user_address": "USER",
-  "deployment": "Qm...",
+  "deployment": "",
   "network": "arbitrum-one",
   "indexed_chain": "arbitrum-one",
   "response_time_ms": 100,
@@ -106,14 +106,22 @@ let baseValues = {
   "gateway_indexer_attempts": baseValueIndexer
 }
 
+let possibleDeployments = ["Qm1", "Qm2", "Qm3"]
+let possibleIndexers = ["Indexer 1", "Indexer 2", "Indexer 3"]
+
 const producer = kafka.producer()
 await producer.connect()
-const messageCount = 3;
-for(let i = 0; i< messageCount; i++) {
+let i = 0;
+while(true) {
   let topic = topics[i%2]
+  let deployment = possibleDeployments[i%3]
   let value = baseValues[topic]
-  value.gateway_id = "Gateway ID " + i.toString()
-  value.timestamp = i
+  if(value == baseValueIndexer) {
+    value.indexer = possibleIndexers[i%3]
+  }
+  value.query_id = "Query ID " + i.toString()
+  value.timestamp = Date.now()
+  value.deployment = deployment
   let messageSent = await producer.send({
     topic: topic,
     messages: [
@@ -121,5 +129,7 @@ for(let i = 0; i< messageCount; i++) {
     ],
   })
   console.log(messageSent)
+  i++
+  await new Promise(f => setTimeout(f, 50));
 }
 

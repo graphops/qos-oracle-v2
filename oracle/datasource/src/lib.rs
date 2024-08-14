@@ -1,7 +1,9 @@
 mod consumer;
 mod datasource_postgres;
 mod datasource_trait;
+pub mod logs;
 mod models;
+pub mod processing;
 
 pub use consumer::*;
 pub use datasource_postgres::{DatasourceClientQueryPostgres, DatasourceIndexerQueryPostgres};
@@ -44,11 +46,6 @@ pub struct CreateWithDatasourcePgArgs {
     /// Postgres db url.
     /// Format: `postgres://{user}:{password}@{host}:{port}/{database}
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// let postgres_db_url = String::from("postgres://dev:password1@0.0.0.0:5432/logs");
-    /// ```
     pub postgres_db_url: String,
     /// Number of work threads to spin up which listen on the kafka message consumer and write to the db.
     /// Default value is: 1
