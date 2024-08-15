@@ -1,5 +1,5 @@
-use chrono::{DateTime, Utc};
-use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, Value};
+use chrono::{DateTime, Duration, Utc};
+use sea_orm::{ConnectionTrait, DatabaseConnection, EntityTrait, QueryOrder, Statement, Value};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -96,7 +96,7 @@ pub async fn get_gateway_indexer_query_results_for_time_bucket(
         })
         .collect();
 
-        tracing::info!("Result indexer: {:?}", query_result);
+    tracing::info!("Result indexer: {:?}", query_result);
     Ok(query_result
         .into_iter()
         .map(|bucket| (bucket.indexer.clone(), bucket))
@@ -186,7 +186,7 @@ pub async fn get_gateway_client_query_results_for_time_bucket(
         })
         .collect();
 
-        tracing::info!("Result client: {:?}", query_result);
+    tracing::info!("Result client: {:?}", query_result);
     Ok(query_result
         .into_iter()
         .map(|bucket| (bucket.deployment.clone(), bucket))
@@ -251,7 +251,11 @@ pub async fn process_and_publish_indexer_data(
     // Convert bucket data to JSON
     let json_data = serde_json::to_string(&bucket)?;
 
-    tracing::info!("JSON data to be stored for indexer '{}': {:?}", indexer, json_data);
+    tracing::info!(
+        "JSON data to be stored for indexer '{}': {:?}",
+        indexer,
+        json_data
+    );
     // Insert log with posted = false
     let log = insert_log(
         db,
@@ -260,7 +264,7 @@ pub async fn process_and_publish_indexer_data(
         "IndexerQueryResult".to_string(),
         false,
     )
-    .await;
+    .await?;
 
     // // Publish to IPFS (you need to implement this function)
     // if let Ok(ipfs_hash) = publish_to_ipfs(&bucket).await {
@@ -282,7 +286,11 @@ pub async fn process_and_publish_client_data(
     // Convert bucket data to JSON
     let json_data = serde_json::to_string(&bucket)?;
 
-    tracing::info!("JSON data to be stored for deployment '{}': {:?}", deployment, json_data);
+    tracing::info!(
+        "JSON data to be stored for deployment '{}': {:?}",
+        deployment,
+        json_data
+    );
     // Insert log with posted = false
     let log = insert_log(
         db,
@@ -309,4 +317,38 @@ async fn publish_to_ipfs<T: serde::Serialize>(data: &T) -> anyhow::Result<String
     // Implement IPFS publishing logic here
     // This is a placeholder implementation
     Ok("QmHashPlaceholder".to_string())
+}
+
+pub async fn get_starting_timestamp(db: &DatabaseConnection) -> anyhow::Result<DateTime<Utc>> {
+    // Check for the latest IPFS log timestamp
+    let latest_ipfs_log = entity::ipfs_logs::Entity::find()
+        .order_by_desc(entity::ipfs_logs::Column::Id)
+        .one(db)
+        .await?;
+
+    if let Some(log) = latest_ipfs_log {
+        return Ok(log.id.and_utc());
+    }
+
+    // If no IPFS log found, find the oldest timestamp from indexer and client data
+    let oldest_indexer_timestamp = entity::indexer_query_results::Entity::find()
+        .order_by_asc(entity::indexer_query_results::Column::Timestamp)
+        .one(db)
+        .await?
+        .and_then(|record| record.timestamp)
+        .map(|ts| DateTime::<Utc>::from_timestamp(ts / 1000, 0).unwrap());
+
+    let oldest_client_timestamp = entity::client_query_result::Entity::find()
+        .order_by_asc(entity::client_query_result::Column::Timestamp)
+        .one(db)
+        .await?
+        .and_then(|record| record.timestamp)
+        .map(|ts| DateTime::<Utc>::from_timestamp(ts / 1000, 0).unwrap());
+
+    match (oldest_indexer_timestamp, oldest_client_timestamp) {
+        (Some(indexer), Some(client)) => Ok(indexer.min(client)),
+        (Some(indexer), None) => Ok(indexer),
+        (None, Some(client)) => Ok(client),
+        (None, None) => Ok(Utc::now() - Duration::hours(1)), // Default to 1 hour ago if no data found
+    }
 }

@@ -1,4 +1,4 @@
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use entity::ipfs_logs::{self, Entity as IpfsLog};
 use sea_orm::ActiveModelTrait;
 use sea_orm::{
@@ -20,7 +20,7 @@ pub async fn insert_log(
     json_data: String,
     data_type: String,
     posted: bool,
-) {
+) -> Result<InsertResult<ipfs_logs::ActiveModel>, sea_orm::DbErr> {
     let log = ipfs_logs::ActiveModel {
         id: sea_orm::Set(timestamp.naive_utc()),
         json_data: sea_orm::Set(json_data),
@@ -28,8 +28,7 @@ pub async fn insert_log(
         posted: sea_orm::Set(posted),
     };
 
-    let insert_result = IpfsLog::insert(log).exec(db).await;
-    ()
+    IpfsLog::insert(log).exec(db).await
 }
 
 pub async fn query_logs(
