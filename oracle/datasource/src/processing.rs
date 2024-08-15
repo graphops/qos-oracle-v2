@@ -44,8 +44,8 @@ pub async fn get_gateway_indexer_query_results_for_time_bucket(
         sea_orm::DatabaseBackend::Postgres,
         sql,
         vec![
-            Value::BigInt(bucket_start_time.timestamp_nanos_opt()),
-            Value::BigInt(bucket_end_time.timestamp_nanos_opt()),
+            Value::BigInt(Some(bucket_start_time.timestamp_millis())),
+            Value::BigInt(Some(bucket_end_time.timestamp_millis())),
         ],
     );
 
@@ -140,8 +140,8 @@ pub async fn get_gateway_client_query_results_for_time_bucket(
         sea_orm::DatabaseBackend::Postgres,
         sql,
         vec![
-            Value::BigInt(bucket_start_time.timestamp_nanos_opt()),
-            Value::BigInt(bucket_end_time.timestamp_nanos_opt()),
+            Value::BigInt(Some(bucket_start_time.timestamp_millis())),
+            Value::BigInt(Some(bucket_end_time.timestamp_millis())),
         ],
     );
 
