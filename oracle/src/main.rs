@@ -62,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
     let mut current_timestamp = start_timestamp;
     loop {
         interval.tick().await;
-        let now = Utc::now();
+        let now = align_to_bucket(Utc::now()); // With this we ensure we don't process ongoing buckets
 
         while current_timestamp < now {
             let bucket_end_time = current_timestamp + Duration::from_secs(300);

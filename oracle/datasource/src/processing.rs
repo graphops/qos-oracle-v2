@@ -1,4 +1,4 @@
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, Timelike, Utc};
 use sea_orm::{ConnectionTrait, DatabaseConnection, EntityTrait, QueryOrder, Statement, Value};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -37,7 +37,7 @@ pub async fn get_gateway_indexer_query_results_for_time_bucket(
         AVG(blocks_behind) as blocks_behind
     FROM indexer_query_results
     WHERE timestamp >= $1 AND timestamp < $2
-    GROUP BY indexer
+    GROUP BY indexer, deployment
     "#;
 
     let result = Statement::from_sql_and_values(
@@ -326,29 +326,44 @@ pub async fn get_starting_timestamp(db: &DatabaseConnection) -> anyhow::Result<D
         .one(db)
         .await?;
 
-    if let Some(log) = latest_ipfs_log {
-        return Ok(log.id.and_utc());
-    }
+    let oldest_timestamp = if let Some(log) = latest_ipfs_log {
+        log.id.and_utc()
+    } else {
+        // If no IPFS log found, find the oldest timestamp from indexer and client data
+        let oldest_indexer_timestamp = entity::indexer_query_results::Entity::find()
+            .order_by_asc(entity::indexer_query_results::Column::Timestamp)
+            .one(db)
+            .await?
+            .and_then(|record| record.timestamp)
+            .map(|ts| DateTime::<Utc>::from_timestamp(ts / 1000, 0).unwrap());
 
-    // If no IPFS log found, find the oldest timestamp from indexer and client data
-    let oldest_indexer_timestamp = entity::indexer_query_results::Entity::find()
-        .order_by_asc(entity::indexer_query_results::Column::Timestamp)
-        .one(db)
-        .await?
-        .and_then(|record| record.timestamp)
-        .map(|ts| DateTime::<Utc>::from_timestamp(ts / 1000, 0).unwrap());
+        let oldest_client_timestamp = entity::client_query_result::Entity::find()
+            .order_by_asc(entity::client_query_result::Column::Timestamp)
+            .one(db)
+            .await?
+            .and_then(|record| record.timestamp)
+            .map(|ts| DateTime::<Utc>::from_timestamp(ts / 1000, 0).unwrap());
 
-    let oldest_client_timestamp = entity::client_query_result::Entity::find()
-        .order_by_asc(entity::client_query_result::Column::Timestamp)
-        .one(db)
-        .await?
-        .and_then(|record| record.timestamp)
-        .map(|ts| DateTime::<Utc>::from_timestamp(ts / 1000, 0).unwrap());
+        match (oldest_indexer_timestamp, oldest_client_timestamp) {
+            (Some(indexer), Some(client)) => indexer.min(client),
+            (Some(indexer), None) => indexer,
+            (None, Some(client)) => client,
+            (None, None) => Utc::now() - Duration::hours(1), // Default to 1 hour ago if no data found
+        }
+    };
 
-    match (oldest_indexer_timestamp, oldest_client_timestamp) {
-        (Some(indexer), Some(client)) => Ok(indexer.min(client)),
-        (Some(indexer), None) => Ok(indexer),
-        (None, Some(client)) => Ok(client),
-        (None, None) => Ok(Utc::now() - Duration::hours(1)), // Default to 1 hour ago if no data found
-    }
+    Ok(align_to_bucket(oldest_timestamp))
+}
+
+
+pub fn align_to_bucket(timestamp: DateTime<Utc>) -> DateTime<Utc> {
+    let minutes = timestamp.minute();
+    let bucket_start = (minutes / 5) * 5;
+    timestamp
+        .with_minute(bucket_start)
+        .unwrap()
+        .with_second(0)
+        .unwrap()
+        .with_nanosecond(0)
+        .unwrap()
 }
