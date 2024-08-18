@@ -67,37 +67,33 @@ async fn main() -> anyhow::Result<()> {
         while current_timestamp < now {
             let bucket_end_time = current_timestamp + Duration::from_secs(300);
 
-            // Process indexer query results
-            match get_gateway_indexer_query_results_for_time_bucket(&db_conn, current_timestamp)
-                .await
-            {
-                Ok(indexer_results) => {
-                    for (indexer, bucket) in indexer_results {
-                        if let Err(e) =
-                            process_and_publish_indexer_data(&db_conn, indexer, bucket).await
-                        {
-                            tracing::error!("Error processing indexer data: {:?}", e);
+                        // Process indexer query results
+                        match get_gateway_indexer_query_results_for_time_bucket(&db_conn, current_timestamp)
+                        .await
+                    {
+                        Ok(indexer_results) => {
+                            if !indexer_results.is_empty() {
+                                if let Err(e) = process_and_publish_indexer_data(&db_conn, indexer_results, current_timestamp).await {
+                                    tracing::error!("Error processing indexer data: {:?}", e);
+                                }
+                            }
                         }
+                        Err(e) => tracing::error!("Error fetching indexer query results: {:?}", e),
                     }
-                }
-                Err(e) => tracing::error!("Error fetching indexer query results: {:?}", e),
-            }
-
-            // Process client query results
-            match get_gateway_client_query_results_for_time_bucket(&db_conn, current_timestamp)
-                .await
-            {
-                Ok(client_results) => {
-                    for (deployment, bucket) in client_results {
-                        if let Err(e) =
-                            process_and_publish_client_data(&db_conn, deployment, bucket).await
-                        {
-                            tracing::error!("Error processing client data: {:?}", e);
+        
+                    // Process client query results
+                    match get_gateway_client_query_results_for_time_bucket(&db_conn, current_timestamp)
+                        .await
+                    {
+                        Ok(client_results) => {
+                            if !client_results.is_empty() {
+                                if let Err(e) = process_and_publish_client_data(&db_conn, client_results, current_timestamp).await {
+                                    tracing::error!("Error processing client data: {:?}", e);
+                                }
+                            }
                         }
+                        Err(e) => tracing::error!("Error fetching client query results: {:?}", e),
                     }
-                }
-                Err(e) => tracing::error!("Error fetching client query results: {:?}", e),
-            }
 
             current_timestamp = bucket_end_time;
         }

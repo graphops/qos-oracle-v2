@@ -8,7 +8,7 @@ use crate::logs::insert_log;
 pub async fn get_gateway_indexer_query_results_for_time_bucket(
     db: &DatabaseConnection,
     bucket_start_time: DateTime<Utc>,
-) -> anyhow::Result<HashMap<String, IndexerQueryResultBucket>> {
+) -> anyhow::Result<Vec<IndexerQueryResultBucket>> {
     let bucket_end_time = bucket_start_time + chrono::Duration::minutes(5);
 
     let sql = r#"
@@ -18,7 +18,7 @@ pub async fn get_gateway_indexer_query_results_for_time_bucket(
         MIN(query_id) as query_id,
         MAX(status_code::text) as status_code,
         MAX(status) as status,
-        AVG(response_time_ms) as response_time_ms,
+        AVG(response_time_ms)::float as response_time_ms,
         MAX(user_address) as user_address,
         MAX(api_key) as api_key,
         MAX(deployment) as deployment,
@@ -49,14 +49,14 @@ pub async fn get_gateway_indexer_query_results_for_time_bucket(
         ],
     );
 
-    tracing::info!("About to query indexer");
+    tracing::info!("About to query indexer, interval start: {}, interval end: {}", bucket_start_time.timestamp_millis(), bucket_end_time.timestamp_millis());
     let query_result: Vec<IndexerQueryResultBucket> = db
         .query_all(result)
         .await?
         .into_iter()
         .map(|row| IndexerQueryResultBucket {
             indexer: row.try_get::<String>("", "indexer").unwrap_or_default(),
-            count: row.try_get::<i64>("", "count").unwrap_or(0) as u32,
+            count: row.try_get::<i64>("", "count").unwrap_or(0),
             query_id: row.try_get::<String>("", "query_id").unwrap_or_default(),
             status_code: row
                 .try_get::<String>("", "status_code")
@@ -64,7 +64,7 @@ pub async fn get_gateway_indexer_query_results_for_time_bucket(
                 .parse()
                 .unwrap_or(0),
             status: row.try_get::<String>("", "status").unwrap_or_default(),
-            response_time_ms: row.try_get::<f64>("", "response_time_ms").unwrap_or(0.0) as u32,
+            response_time_ms: row.try_get::<f64>("", "response_time_ms").unwrap_or(0.0),
             user_address: row
                 .try_get::<String>("", "user_address")
                 .unwrap_or_default(),
@@ -97,16 +97,13 @@ pub async fn get_gateway_indexer_query_results_for_time_bucket(
         .collect();
 
     tracing::info!("Result indexer: {:?}", query_result);
-    Ok(query_result
-        .into_iter()
-        .map(|bucket| (bucket.indexer.clone(), bucket))
-        .collect())
+    Ok(query_result)
 }
 
 pub async fn get_gateway_client_query_results_for_time_bucket(
     db: &DatabaseConnection,
     bucket_start_time: DateTime<Utc>,
-) -> anyhow::Result<HashMap<String, ClientQueryResultBucket>> {
+) -> anyhow::Result<Vec<ClientQueryResultBucket>> {
     let bucket_end_time = bucket_start_time + chrono::Duration::minutes(5);
 
     let sql = r#"
@@ -116,7 +113,7 @@ pub async fn get_gateway_client_query_results_for_time_bucket(
         MIN(query_id) as query_id,
         MAX(status_code::text) as status_code,
         MAX(status) as status,
-        AVG(response_time_ms) as response_time_ms,
+        AVG(response_time_ms)::float as response_time_ms,
         MAX(user_address) as user_address,
         MAX(api_key) as api_key,
         MAX(graph_env) as graph_env,
@@ -145,14 +142,14 @@ pub async fn get_gateway_client_query_results_for_time_bucket(
         ],
     );
 
-    tracing::info!("About to query client");
+    tracing::info!("About to query client, interval start: {}, interval end: {}", bucket_start_time.timestamp_millis(), bucket_end_time.timestamp_millis());
     let query_result: Vec<ClientQueryResultBucket> = db
         .query_all(result)
         .await?
         .into_iter()
         .map(|row| ClientQueryResultBucket {
             deployment: row.try_get::<String>("", "deployment").unwrap_or_default(),
-            count: row.try_get::<i64>("", "count").unwrap_or(0) as u32,
+            count: row.try_get::<i64>("", "count").unwrap_or(0),
             query_id: row.try_get::<String>("", "query_id").unwrap_or_default(),
             status_code: row
                 .try_get::<String>("", "status_code")
@@ -160,7 +157,7 @@ pub async fn get_gateway_client_query_results_for_time_bucket(
                 .parse()
                 .unwrap_or(0),
             status: row.try_get::<String>("", "status").unwrap_or_default(),
-            response_time_ms: row.try_get::<f64>("", "response_time_ms").unwrap_or(0.0) as u32,
+            response_time_ms: row.try_get::<f64>("", "response_time_ms").unwrap_or(0.0),
             user_address: row
                 .try_get::<String>("", "user_address")
                 .unwrap_or_default(),
@@ -169,7 +166,7 @@ pub async fn get_gateway_client_query_results_for_time_bucket(
                 .try_get::<Option<String>>("", "graph_env")
                 .unwrap_or(None),
             network: row.try_get::<Option<String>>("", "network").unwrap_or(None),
-            query_count: row.try_get::<i32>("", "query_count").unwrap_or(0),
+            query_count: row.try_get::<i64>("", "query_count").unwrap_or(0),
             budget: row.try_get::<Option<String>>("", "budget").unwrap_or(None),
             budget_float: row.try_get::<f32>("", "budget_float").unwrap_or(0.0),
             fee: row.try_get::<f32>("", "fee").unwrap_or(0.0),
@@ -187,20 +184,17 @@ pub async fn get_gateway_client_query_results_for_time_bucket(
         .collect();
 
     tracing::info!("Result client: {:?}", query_result);
-    Ok(query_result
-        .into_iter()
-        .map(|bucket| (bucket.deployment.clone(), bucket))
-        .collect())
+    Ok(query_result)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndexerQueryResultBucket {
     pub indexer: String,
-    pub count: u32,
+    pub count: i64,
     pub query_id: String,
     pub status_code: i32,
     pub status: String,
-    pub response_time_ms: u32,
+    pub response_time_ms: f64,
     pub user_address: String,
     pub api_key: String,
     pub deployment: String,
@@ -222,16 +216,16 @@ pub struct IndexerQueryResultBucket {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClientQueryResultBucket {
     pub deployment: String,
-    pub count: u32,
+    pub count: i64,
     pub query_id: String,
     pub status_code: i32,
     pub status: String,
-    pub response_time_ms: u32,
+    pub response_time_ms: f64,
     pub user_address: String,
     pub api_key: String,
     pub graph_env: Option<String>,
     pub network: Option<String>,
-    pub query_count: i32,
+    pub query_count: i64,
     pub budget: Option<String>,
     pub budget_float: f32,
     pub fee: f32,
@@ -245,74 +239,71 @@ pub struct ClientQueryResultBucket {
 
 pub async fn process_and_publish_indexer_data(
     db: &DatabaseConnection,
-    indexer: String,
-    bucket: IndexerQueryResultBucket,
+    buckets: Vec<IndexerQueryResultBucket>,
+    bucket_time: DateTime<Utc>,
 ) -> anyhow::Result<()> {
-    // Convert bucket data to JSON
-    let json_data = serde_json::to_string(&bucket)?;
+    // Convert bucket data to JSON array
+    let json_data = serde_json::to_string(&buckets)?;
 
     tracing::info!(
-        "JSON data to be stored for indexer '{}': {:?}",
-        indexer,
+        "JSON data to be stored for indexer buckets: {:?}",
         json_data
     );
     // Insert log with posted = false
     let log = insert_log(
         db,
-        Utc::now(),
+        bucket_time,
         json_data,
         "IndexerQueryResult".to_string(),
         false,
     )
     .await?;
 
-    // // Publish to IPFS (you need to implement this function)
-    // if let Ok(ipfs_hash) = publish_to_ipfs(&bucket).await {
-    //     // Update log to posted = true
-    //     //update_log_posted_status(db, log.id, true).await?;
-    //     tracing::info!("Published indexer data to IPFS: {}", ipfs_hash);
-    // } else {
-    //     tracing::error!("Failed to publish indexer data to IPFS");
-    // }
+    // Publish to IPFS
+    if let Ok(ipfs_hash) = publish_to_ipfs(&buckets).await {
+        // Update log to posted = true
+        //update_log_posted_status(db, log.id, true).await?;
+        tracing::info!("Published indexer data to IPFS: {}", ipfs_hash);
+    } else {
+        tracing::error!("Failed to publish indexer data to IPFS");
+    }
 
     Ok(())
 }
 
 pub async fn process_and_publish_client_data(
     db: &DatabaseConnection,
-    deployment: String,
-    bucket: ClientQueryResultBucket,
+    buckets: Vec<ClientQueryResultBucket>,
+    bucket_time: DateTime<Utc>,
 ) -> anyhow::Result<()> {
-    // Convert bucket data to JSON
-    let json_data = serde_json::to_string(&bucket)?;
+    // Convert bucket data to JSON array
+    let json_data = serde_json::to_string(&buckets)?;
 
     tracing::info!(
-        "JSON data to be stored for deployment '{}': {:?}",
-        deployment,
+        "JSON data to be stored for client buckets: {:?}",
         json_data
     );
     // Insert log with posted = false
     let log = insert_log(
         db,
-        Utc::now(),
+        bucket_time,
         json_data,
         "ClientQueryResult".to_string(),
         false,
     )
-    .await;
+    .await?;
 
-    // // Publish to IPFS (you need to implement this function)
-    // if let Ok(ipfs_hash) = publish_to_ipfs(&bucket).await {
-    //     // Update log to posted = true
-    //     //update_log_posted_status(db, log.id, true).await?;
-    //     tracing::info!("Published client data to IPFS: {}", ipfs_hash);
-    // } else {
-    //     tracing::error!("Failed to publish client data to IPFS");
-    // }
+    // Publish to IPFS
+    if let Ok(ipfs_hash) = publish_to_ipfs(&buckets).await {
+        // Update log to posted = true
+        //update_log_posted_status(db, log.id, true).await?;
+        tracing::info!("Published client data to IPFS: {}", ipfs_hash);
+    } else {
+        tracing::error!("Failed to publish client data to IPFS");
+    }
 
     Ok(())
 }
-
 async fn publish_to_ipfs<T: serde::Serialize>(data: &T) -> anyhow::Result<String> {
     // Implement IPFS publishing logic here
     // This is a placeholder implementation
@@ -327,7 +318,8 @@ pub async fn get_starting_timestamp(db: &DatabaseConnection) -> anyhow::Result<D
         .await?;
 
     let oldest_timestamp = if let Some(log) = latest_ipfs_log {
-        log.id.and_utc()
+        tracing::info!("Latest timestamp for ipfs log: {}", log.bucket_start_timestamp.and_utc());
+        log.bucket_start_timestamp.and_utc()
     } else {
         // If no IPFS log found, find the oldest timestamp from indexer and client data
         let oldest_indexer_timestamp = entity::indexer_query_results::Entity::find()
@@ -344,6 +336,7 @@ pub async fn get_starting_timestamp(db: &DatabaseConnection) -> anyhow::Result<D
             .and_then(|record| record.timestamp)
             .map(|ts| DateTime::<Utc>::from_timestamp(ts / 1000, 0).unwrap());
 
+        tracing::info!("Oldest client/indexer timestamp found! Indexer {:?}, Client {:?}", oldest_indexer_timestamp, oldest_client_timestamp);
         match (oldest_indexer_timestamp, oldest_client_timestamp) {
             (Some(indexer), Some(client)) => indexer.min(client),
             (Some(indexer), None) => indexer,

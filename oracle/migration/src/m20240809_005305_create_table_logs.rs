@@ -13,9 +13,15 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .col(
                         ColumnDef::new(IpfsLogs::Id)
-                            .timestamp()
+                            .integer()
                             .not_null()
+                            .auto_increment()
                             .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(IpfsLogs::BucketStartTimestamp)
+                            .timestamp()
+                            .not_null(),
                     )
                     .col(ColumnDef::new(IpfsLogs::JsonData).text().not_null())
                     .col(ColumnDef::new(IpfsLogs::DataType).string().not_null())
@@ -36,6 +42,7 @@ impl MigrationTrait for Migration {
 enum IpfsLogs {
     Table,
     Id,
+    BucketStartTimestamp,
     JsonData,
     DataType,
     Posted,
