@@ -1,4 +1,4 @@
-use sea_orm_migration::{prelude::*, sea_orm::EnumIter, sea_query::extension::postgres::Type};
+use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -7,20 +7,6 @@ pub struct Migration;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let db = manager.get_connection();
-
-        manager
-            .create_type(
-                Type::create()
-                    .as_enum(IndexerQueryResultStatus::Table)
-                    .values([
-                        IndexerQueryResultStatus::Success,
-                        IndexerQueryResultStatus::InternalError,
-                        IndexerQueryResultStatus::UserError,
-                        IndexerQueryResultStatus::NotFound,
-                    ])
-                    .to_owned(),
-            )
-            .await?;
 
         manager
             .create_table(
@@ -47,17 +33,9 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(IndexerQueryResult::Deployment).string_len(46))
                     .col(
                         ColumnDef::new(IndexerQueryResult::StatusCode)
-                            .enumeration(
-                                IndexerQueryResultStatus::Table,
-                                [
-                                    IndexerQueryResultStatus::Success,
-                                    IndexerQueryResultStatus::InternalError,
-                                    IndexerQueryResultStatus::UserError,
-                                    IndexerQueryResultStatus::NotFound,
-                                ],
-                            )
+                            .integer()
                             .not_null()
-                            .default("SUCCESS"),
+                            .default(0),
                     )
                     .col(ColumnDef::new(IndexerQueryResult::Status).text().null())
                     .col(ColumnDef::new(IndexerQueryResult::GraphEnv).text().null())
@@ -122,16 +100,6 @@ impl MigrationTrait for Migration {
         manager
             .drop_table(Table::drop().table(IndexerQueryResult::Table).to_owned())
             .await?;
-
-        manager
-            .drop_type(
-                Type::drop()
-                    .name(IndexerQueryResultStatus::Table)
-                    .if_exists()
-                    .to_owned(),
-            )
-            .await?;
-
         Ok(())
     }
 }
@@ -183,18 +151,4 @@ pub enum IndexerQueryResult {
     Allocation,
     #[iden = "indexer_errors"]
     IndexerErrors,
-}
-
-#[derive(Iden, EnumIter)]
-pub enum IndexerQueryResultStatus {
-    #[iden = "indexer_query_results_status"]
-    Table,
-    #[iden = "SUCCESS"]
-    Success,
-    #[iden = "USER_ERROR"]
-    UserError,
-    #[iden = "INTERNAL_ERROR"]
-    InternalError,
-    #[iden = "NOT_FOUND"]
-    NotFound,
 }

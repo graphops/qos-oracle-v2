@@ -1,8 +1,4 @@
-use sea_orm_migration::{
-    prelude::*,
-    sea_orm::{ConnectionTrait, EnumIter},
-    sea_query::extension::postgres::Type,
-};
+use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -11,20 +7,6 @@ pub struct Migration;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let db = manager.get_connection();
-
-        manager
-            .create_type(
-                Type::create()
-                    .as_enum(ClientQueryResultStatus::Table)
-                    .values([
-                        ClientQueryResultStatus::Success,
-                        ClientQueryResultStatus::InternalError,
-                        ClientQueryResultStatus::UserError,
-                        ClientQueryResultStatus::NotFound,
-                    ])
-                    .to_owned(),
-            )
-            .await?;
 
         manager
             .create_table(
@@ -52,17 +34,9 @@ impl MigrationTrait for Migration {
                     )
                     .col(
                         ColumnDef::new(ClientQueryResult::StatusCode)
-                            .enumeration(
-                                ClientQueryResultStatus::Table,
-                                [
-                                    ClientQueryResultStatus::Success,
-                                    ClientQueryResultStatus::InternalError,
-                                    ClientQueryResultStatus::UserError,
-                                    ClientQueryResultStatus::NotFound,
-                                ],
-                            )
+                            .integer()
                             .not_null()
-                            .default("SUCCESS"),
+                            .default(0),
                     )
                     .col(ColumnDef::new(ClientQueryResult::Status).text().null())
                     .col(ColumnDef::new(ClientQueryResult::GraphEnv).text().null())
@@ -74,12 +48,6 @@ impl MigrationTrait for Migration {
                             .default(0),
                     )
                     .col(ColumnDef::new(ClientQueryResult::Budget).text().null())
-                    .col(
-                        ColumnDef::new(ClientQueryResult::BudgetFloat)
-                            .float()
-                            .null()
-                            .default(0.00),
-                    )
                     .col(
                         ColumnDef::new(ClientQueryResult::Fee)
                             .float()
@@ -113,67 +81,12 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // create an index on the: user & deployment
-        manager
-            .create_index(
-                Index::create()
-                    .name("idx__client_query_result__user_address")
-                    .if_not_exists()
-                    .table(ClientQueryResult::Table)
-                    .col(ClientQueryResult::UserAddress)
-                    .to_owned(),
-            )
-            .await?;
-        // only create an index on the `api_key` & `deployment` values where the value is not null
-        db.execute_unprepared(
-            "CREATE INDEX IF NOT EXISTS idx__client_query_result__api_key ON client_query_result (api_key) WHERE api_key IS NOT NULL"
-        )
-        .await?;
-        db.execute_unprepared(
-            "CREATE INDEX IF NOT EXISTS idx__client_query_result__deployment ON client_query_result (deployment) WHERE deployment IS NOT NULL"
-        )
-        .await?;
-
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_index(
-                Index::drop()
-                    .name("idx__client_query_result__user_address")
-                    .table(ClientQueryResult::Table)
-                    .to_owned(),
-            )
-            .await?;
-        manager
-            .drop_index(
-                Index::drop()
-                    .name("idx__client_query_result__api_key")
-                    .table(ClientQueryResult::Table)
-                    .to_owned(),
-            )
-            .await?;
-        manager
-            .drop_index(
-                Index::drop()
-                    .name("idx__client_query_result__deployment")
-                    .table(ClientQueryResult::Table)
-                    .to_owned(),
-            )
-            .await?;
-
-        manager
             .drop_table(Table::drop().table(ClientQueryResult::Table).to_owned())
-            .await?;
-
-        manager
-            .drop_type(
-                Type::drop()
-                    .name(ClientQueryResultStatus::Table)
-                    .if_exists()
-                    .to_owned(),
-            )
             .await?;
 
         Ok(())
@@ -207,8 +120,6 @@ pub enum ClientQueryResult {
     QueryCount,
     #[iden = "budget"]
     Budget,
-    #[iden = "budget_float"]
-    BudgetFloat,
     #[iden = "fee"]
     Fee,
     #[iden = "fee_usd"]
@@ -223,18 +134,4 @@ pub enum ClientQueryResult {
     NetworkChain,
     #[iden = "indexed_chain"]
     IndexedChain,
-}
-
-#[derive(Iden, EnumIter)]
-pub enum ClientQueryResultStatus {
-    #[iden = "client_query_result_status"]
-    Table,
-    #[iden = "SUCCESS"]
-    Success,
-    #[iden = "USER_ERROR"]
-    UserError,
-    #[iden = "INTERNAL_ERROR"]
-    InternalError,
-    #[iden = "NOT_FOUND"]
-    NotFound,
 }

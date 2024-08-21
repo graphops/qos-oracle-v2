@@ -1,7 +1,6 @@
 use chrono::{DateTime, Duration, Timelike, Utc};
 use sea_orm::{ConnectionTrait, DatabaseConnection, EntityTrait, QueryOrder, Statement, Value};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 use crate::logs::insert_log;
 
@@ -59,9 +58,7 @@ pub async fn get_gateway_indexer_query_results_for_time_bucket(
             count: row.try_get::<i64>("", "count").unwrap_or(0),
             query_id: row.try_get::<String>("", "query_id").unwrap_or_default(),
             status_code: row
-                .try_get::<String>("", "status_code")
-                .unwrap_or_default()
-                .parse()
+                .try_get::<i32>("", "status_code")
                 .unwrap_or(0),
             status: row.try_get::<String>("", "status").unwrap_or_default(),
             response_time_ms: row.try_get::<f64>("", "response_time_ms").unwrap_or(0.0),
@@ -152,9 +149,7 @@ pub async fn get_gateway_client_query_results_for_time_bucket(
             count: row.try_get::<i64>("", "count").unwrap_or(0),
             query_id: row.try_get::<String>("", "query_id").unwrap_or_default(),
             status_code: row
-                .try_get::<String>("", "status_code")
-                .unwrap_or_default()
-                .parse()
+                .try_get::<i32>("", "status_code")
                 .unwrap_or(0),
             status: row.try_get::<String>("", "status").unwrap_or_default(),
             response_time_ms: row.try_get::<f64>("", "response_time_ms").unwrap_or(0.0),
@@ -168,7 +163,6 @@ pub async fn get_gateway_client_query_results_for_time_bucket(
             network: row.try_get::<Option<String>>("", "network").unwrap_or(None),
             query_count: row.try_get::<i64>("", "query_count").unwrap_or(0),
             budget: row.try_get::<Option<String>>("", "budget").unwrap_or(None),
-            budget_float: row.try_get::<f32>("", "budget_float").unwrap_or(0.0),
             fee: row.try_get::<f32>("", "fee").unwrap_or(0.0),
             fee_usd: row.try_get::<f32>("", "fee_usd").unwrap_or(0.0),
             ray_id: row.try_get::<Option<String>>("", "ray_id").unwrap_or(None),
@@ -227,7 +221,6 @@ pub struct ClientQueryResultBucket {
     pub network: Option<String>,
     pub query_count: i64,
     pub budget: Option<String>,
-    pub budget_float: f32,
     pub fee: f32,
     pub fee_usd: f32,
     pub ray_id: Option<String>,

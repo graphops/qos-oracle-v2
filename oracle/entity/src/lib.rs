@@ -5,5 +5,3 @@ pub mod prelude;
 pub mod client_query_result;
 pub mod indexer_query_results;
 pub mod ipfs_logs;
-pub mod sea_orm_active_enums;
-pub mod traits;
