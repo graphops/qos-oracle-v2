@@ -2,8 +2,7 @@ use chrono::{DateTime, Utc};
 use entity::ipfs_logs::{self, Entity as IpfsLog};
 use sea_orm::{ActiveModelTrait, Set};
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, Database, DatabaseConnection, EntityTrait, InsertResult,
-    QueryFilter, QueryOrder,
+    ColumnTrait, Database, DatabaseConnection, EntityTrait, InsertResult, QueryFilter, QueryOrder,
 };
 
 pub struct DbConfig {
@@ -38,7 +37,10 @@ pub async fn query_logs(
     end_time: DateTime<Utc>,
 ) -> Result<Vec<ipfs_logs::Model>, sea_orm::DbErr> {
     IpfsLog::find()
-        .filter(ipfs_logs::Column::BucketStartTimestamp.between(start_time.naive_utc(), end_time.naive_utc()))
+        .filter(
+            ipfs_logs::Column::BucketStartTimestamp
+                .between(start_time.naive_utc(), end_time.naive_utc()),
+        )
         .order_by_asc(ipfs_logs::Column::BucketStartTimestamp)
         .all(db)
         .await
@@ -51,7 +53,10 @@ pub async fn query_logs_by_type(
     end_time: DateTime<Utc>,
 ) -> Result<Vec<ipfs_logs::Model>, sea_orm::DbErr> {
     IpfsLog::find()
-        .filter(ipfs_logs::Column::BucketStartTimestamp.between(start_time.naive_utc(), end_time.naive_utc()))
+        .filter(
+            ipfs_logs::Column::BucketStartTimestamp
+                .between(start_time.naive_utc(), end_time.naive_utc()),
+        )
         .filter(ipfs_logs::Column::DataType.eq(data_type))
         .order_by_asc(ipfs_logs::Column::BucketStartTimestamp)
         .all(db)

@@ -342,7 +342,7 @@ pub async fn process_and_publish_indexer_data(
     //     json_data
     // );
     // Insert log with posted = false
-    let log = insert_log(
+    let _log = insert_log(
         db,
         bucket_time,
         json_data,
@@ -373,7 +373,7 @@ pub async fn process_and_publish_client_data(
 
     //tracing::info!("JSON data to be stored for client buckets: {:?}", json_data);
     // Insert log with posted = false
-    let log = insert_log(
+    let _log = insert_log(
         db,
         bucket_time,
         json_data,
@@ -393,7 +393,7 @@ pub async fn process_and_publish_client_data(
 
     Ok(())
 }
-async fn publish_to_ipfs<T: serde::Serialize>(data: &T) -> anyhow::Result<String> {
+async fn publish_to_ipfs<T: serde::Serialize>(_data: &T) -> anyhow::Result<String> {
     // Implement IPFS publishing logic here
     // This is a placeholder implementation
     Ok("QmHashPlaceholder".to_string())
