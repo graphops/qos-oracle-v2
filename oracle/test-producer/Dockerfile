@@ -53,29 +53,8 @@ RUN mkdir -p ../clickhouse
 COPY --from=chef /app/recipe.json recipe.json
 RUN cargo chef cook --profile ${CARGO_PROFILE} --recipe-path recipe.json
 
-# Create placeholder schema for build time
-RUN echo 'syntax = "proto3"; \
-    package qos; \
-    message ClientQueryProtobuf { \
-        bytes query_id = 1; \
-        bytes gateway_id = 2; \
-        int64 event_time = 3; \
-        repeated IndexerQueryProtobuf indexer_queries = 4; \
-        string subgraph = 5; \
-    } \
-    message IndexerQueryProtobuf { \
-        bytes indexer = 1; \
-        bytes deployment = 2; \
-        bytes allocation = 3; \
-        string indexed_chain = 4; \
-        string url = 5; \
-        double fee_grt = 6; \
-        int32 response_time_ms = 7; \
-        int32 seconds_behind = 8; \
-        string result = 9; \
-        string indexer_errors = 10; \
-        int32 blocks_behind = 11; \
-    }' > ../clickhouse/schema.proto
+# Copy the ACTUAL schema.proto from the project
+COPY ../clickhouse/schema.proto ../clickhouse/schema.proto
 
 # Build the application
 COPY . .

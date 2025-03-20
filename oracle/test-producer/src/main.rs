@@ -9,10 +9,8 @@ use rdkafka::util::get_rdkafka_version;
 use tokio::time;
 use uuid::Uuid;
 use prost::Message;
-use chrono;
 
-// Assume the generated Protobuf code is available in the `qos` module.
-// The build script should generate the Protobuf code from your schema.proto.
+// Use the exact schema from clickhouse/schema.proto
 mod qos {
     include!(concat!(env!("OUT_DIR"), "/qos.rs"));
 }
@@ -52,37 +50,29 @@ async fn main() {
         .set("retry.backoff.ms", "1000")     // 1 second between retries
         .set("socket.timeout.ms", "10000")   // 10 seconds socket timeout
         .set("socket.keepalive.enable", "true")
-        .set("statistics.interval.ms", "30000") // Get stats every 30 seconds
-        .set("api.version.request", "true")
-        .set("api.version.request.timeout.ms", "5000")
         .create()
-        .expect("Failed to create Kafka producer");
+        .expect("Producer creation error");
 
-    // Verify topic exists before sending
-    println!("Sending test messages to topic 'gateway_qos_topic'");
-    
-    // Message counter
-    let mut count = 0;
-    
+    // Make sure this matches the topic name in ClickHouse Kafka engine
+    let topic = "gateway_qos_topic";
+    let mut counter = 0;
+
     loop {
-        let msg = generate_random_message();
-        let mut buf = Vec::new();
-        msg.encode(&mut buf).expect("Failed to encode message");
+        let message = generate_message_exact_schema();
+        let payload = message.encode_to_vec();
 
-        let query_id = String::from_utf8_lossy(&msg.query_id).to_string();
+        counter += 1;
         
-        // Produce message to the target Kafka topic.
-        let record = FutureRecord::to("gateway_qos_topic")
-            .payload(&buf)
-            .key(&query_id);
-            
-        match producer.send(record, Duration::from_secs(10)).await {
-            Ok(delivery) => {
-                count += 1;
-                if count % 10 == 0 {  // Only log every 10 messages to reduce noise
-                    println!("Successfully delivered message #{}: {:?}", count, delivery);
-                }
-            },
+        match producer
+            .send(
+                FutureRecord::to(topic)
+                    .payload(&payload)
+                    .key(&format!("{}", counter)),
+                Duration::from_secs(0),
+            )
+            .await
+        {
+            Ok((partition, offset)) => println!("Delivered: ({}, {})", partition, offset),
             Err((e, _)) => eprintln!("Delivery error: {:?}", e),
         }
 
@@ -91,7 +81,8 @@ async fn main() {
     }
 }
 
-fn generate_random_message() -> ClientQueryProtobuf {
+// Function to generate a message with the exact schema from clickhouse/schema.proto
+fn generate_message_exact_schema() -> ClientQueryProtobuf {
     let mut rng = rand::thread_rng();
     
     // Create random indexer queries
@@ -122,47 +113,19 @@ fn generate_random_message() -> ClientQueryProtobuf {
         indexer_queries.push(indexer_query);
     }
     
-    // Create a random gateway query with the indexer queries
+    // Create a ClientQueryProtobuf with EXACTLY the fields from schema.proto
     ClientQueryProtobuf {
-        query_id: Uuid::new_v4().to_string().into_bytes(),
-        gateway_id: Uuid::new_v4().to_string().into_bytes(),
-        event_time: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as i64,
-        indexer_queries,
+        gateway_id: Uuid::new_v4().to_string(),
+        receipt_signer: Uuid::new_v4().to_string().into_bytes(),
+        query_id: Uuid::new_v4().to_string(),
+        api_key: format!("api-key-{}", rng.gen_range(1..1000)),
+        user_id: format!("user-{}", rng.gen_range(1..500)),
         subgraph: format!("subgraph-{}", rng.gen_range(1..20)),
-    }
-}
-
-fn generate_random_indexer_query() -> IndexerQueryProtobuf {
-    let mut rng = rand::thread_rng();
-    
-    // Sample data
-    let indexed_chains = ["ethereum", "polygon", "arbitrum", "optimism"];
-    let urls = ["https://indexer1.io/graphql", "https://indexer2.io/graphql", "https://indexer3.io/graphql"];
-    let results = ["success", "error", "timeout"];
-    let error_messages = ["", "timeout error", "server error", "validation error"];
-    
-    IndexerQueryProtobuf {
-        indexer: Uuid::new_v4().to_string().into_bytes(),
-        deployment: Uuid::new_v4().to_string().into_bytes(),
-        allocation: Uuid::new_v4().to_string().into_bytes(),
-        indexed_chain: indexed_chains.choose(&mut rng)
-            .expect("Indexed chains array should not be empty")
-            .to_string(),
-        url: urls.choose(&mut rng)
-            .expect("URLs array should not be empty")
-            .to_string(),
-        fee_grt: rng.gen_range(0.0001..0.1),
-        response_time_ms: rng.gen_range(10..1000),
-        seconds_behind: rng.gen_range(0..300),
-        result: results.choose(&mut rng)
-            .expect("Results array should not be empty")
-            .to_string(),
-        indexer_errors: error_messages.choose(&mut rng)
-            .expect("Error messages array should not be empty")
-            .to_string(),
-        blocks_behind: rng.gen_range(0..1000),
+        result: if rng.gen_bool(0.95) { "SUCCESS" } else { "ERROR" },
+        response_time_ms: rng.gen_range(50..5000),
+        request_bytes: rng.gen_range(100..5000),
+        response_bytes: rng.gen_range(200..10000),
+        total_fees_usd: rng.gen_range(0.001..0.1),
+        indexer_queries,
     }
 }
