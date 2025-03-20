@@ -1,0 +1,15 @@
+[package]
+name = "qos_kafka_producer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+rdkafka = { version = "0.28", features = ["tokio"] }
+prost = "0.11"
+uuid = { version = "1", features = ["v4"] }
+rand = "0.8"
+chrono = "0.4"
+
+[build-dependencies]
+prost-build = "0.11"

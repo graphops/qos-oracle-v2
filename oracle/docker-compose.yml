@@ -1,0 +1,114 @@
+# QoS Oracle - Data pipeline for The Graph Network quality metrics
+# Common configuration blocks
+x-default-healthcheck: &default-healthcheck
+  interval: 10s
+  timeout: 5s
+  retries: 3
+
+x-clickhouse-env: &clickhouse-env
+  CLICKHOUSE_DB: default
+  CLICKHOUSE_USER: default
+  CLICKHOUSE_PASSWORD: ""
+
+# Services
+services:
+  # Core dependencies
+  clickhouse-server:
+    image: clickhouse/clickhouse-server:22.1
+    profiles: [all, deps, dev]
+    expose:
+      - "8123"  # HTTP interface
+      - "9000"  # Native protocol
+    ports:
+      - "8123:8123"  # HTTP: queries/monitoring
+      - "9000:9000"  # Native: client connections
+    volumes:
+      - ./clickhouse:/docker-entrypoint-initdb.d:ro  # init scripts: read-only
+      - ./clickhouse/schema.proto:/etc/clickhouse-server/schema.proto:ro  # schema: read-only
+      - clickhouse_data:/var/lib/clickhouse:delegated  # data: container writes
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    environment:
+      <<: *clickhouse-env
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+
+  redpanda:
+    image: redpandadata/redpanda:latest
+    profiles: [all, deps, dev]
+    expose:
+      - "9092"  # Kafka API
+      - "8082"  # Pandaproxy HTTP
+    ports:
+      - "9092:9092"  # Kafka: producer/consumer
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --memory=1G
+      - --reserve-memory=0M
+      - --overprovisioned
+      - --node-id=0
+      - --check=false
+      - --pandaproxy-addr=0.0.0.0:8082
+      - --advertise-pandaproxy-addr=redpanda:8082
+      - --kafka-addr=0.0.0.0:9092
+      - --advertise-kafka-addr=redpanda:9092
+      - --rpc-addr=0.0.0.0:33145
+      - --advertise-rpc-addr=redpanda:33145
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data:delegated  # data: container writes
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      start_period: 30s  # Redpanda needs more time to initialize
+
+  # Application services
+  graphql-api:
+    build:
+      context: ./graphql-api
+    profiles: [all, dev]
+    expose:
+      - "8000"  # GraphQL API
+    ports:
+      - "8000:8000"  # API: external access
+    depends_on:
+      clickhouse-server:
+        condition: service_healthy
+    environment:
+      CLICKHOUSE_URL: http://clickhouse-server:8123
+      CLICKHOUSE_DB: default
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+
+  # Test/development tools
+  test-producer:
+    build:
+      context: ./test-producer
+      dockerfile: ./Dockerfile
+    profiles: [all, dev]
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      clickhouse-server:
+        condition: service_healthy
+    volumes:
+      - ./clickhouse/schema.proto:/usr/src/app/schema.proto:ro  # schema: read-only
+    environment:
+      KAFKA_BROKER: redpanda:9092
+      MESSAGES_PER_SECOND: 5
+    restart: on-failure
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD-SHELL", "ps aux | grep -v grep | grep -q qos_kafka_producer || exit 1"]
+
+# Persistent volumes
+volumes:
+  clickhouse_data:  # clickhouse persistent storage
+    driver: local
+  redpanda_data:  # redpanda persistent storage 
+    driver: local

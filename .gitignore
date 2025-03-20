@@ -1,0 +1,35 @@
+# Docker volumes data
+*data/
+*.volume
+
+# Rust build artifacts
+/target/
+*/target/
+**/target/
+**/*.rs.bk
+
+# Logs
+*.log
+/logs/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# IDE - Common
+.vscode/
+.idea/
+*.iml
+.DS_Store
+
+# ClickHouse specific
+preprocessed_configs/
+clickhouse-server.err.log
+clickhouse-server.log
+
+# Temporary files
+*~
+*.swp
+*.swo
+/tmp/ 
