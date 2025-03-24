@@ -1,0 +1,32 @@
+# This file is a workspace manifest without a package definition
+[workspace]
+members = [
+    "test-producer",
+    "graphql-api",
+    "clickhouse"
+]
+
+[workspace.dependencies]
+# Common dependencies across multiple crates
+tokio = { version = "1.28", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+prost = "0.11"
+rdkafka = { version = "0.33", features = ["cmake-build"] }
+clickhouse = { version = "0.11.2", features = ["uuid", "time"] }
+async-graphql = { version = "5.0", features = ["time", "decimal"] }
+actix-web = "4.3"
+hex = "0.4"
+rand = "0.8"
+
+# For development and tests
+env_logger = "0.10"
+dotenv = "0.15"
+
+# Explicitly telling Cargo this is a virtual manifest (workspace only)
+[workspace.package]
+edition = "2021"

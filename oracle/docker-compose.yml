@@ -23,9 +23,11 @@ services:
       - "8123:8123"  # HTTP: queries/monitoring
       - "9000:9000"  # Native: client connections
     volumes:
-      - ./clickhouse:/docker-entrypoint-initdb.d:ro  # init scripts: read-only
-      - ./clickhouse/schema.proto:/etc/clickhouse-server/schema.proto:ro  # schema: read-only
-      - clickhouse_data:/var/lib/clickhouse:delegated  # data: container writes
+      - ./clickhouse/schema.proto:/etc/clickhouse-server/schema.proto:ro
+      - ./clickhouse/tables.sql:/docker-entrypoint-initdb.d/tables.sql:ro
+      - ./clickhouse/allow_schema_path.xml:/etc/clickhouse-server/config.d/allow_schema_path.xml:ro
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
     ulimits:
       nofile:
         soft: 262144
@@ -65,6 +67,9 @@ services:
       <<: *default-healthcheck
       test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
       start_period: 30s  # Redpanda needs more time to initialize
+    environment:
+      REDPANDA_RPC_SERVER_LISTEN_ADDR: 0.0.0.0
+      REDPANDA_KAFKA_ADDRESS: 0.0.0.0:9092
 
   # Application services
   graphql-api:
@@ -89,7 +94,7 @@ services:
   test-producer:
     build:
       context: ./test-producer
-      dockerfile: ./Dockerfile
+      dockerfile: Dockerfile
     profiles: [all, dev]
     depends_on:
       redpanda:
@@ -97,7 +102,7 @@ services:
       clickhouse-server:
         condition: service_healthy
     volumes:
-      - ./clickhouse/schema.proto:/usr/src/app/schema.proto:ro  # schema: read-only
+      - ./clickhouse/schema.proto:/app/../clickhouse/schema.proto:ro
     environment:
       KAFKA_BROKER: redpanda:9092
       MESSAGES_PER_SECOND: 5
@@ -106,9 +111,29 @@ services:
       <<: *default-healthcheck
       test: ["CMD-SHELL", "ps aux | grep -v grep | grep -q qos_kafka_producer || exit 1"]
 
+  redpanda-console:
+    image: redpandadata/console:latest
+    container_name: redpanda-console
+    depends_on:
+      - redpanda
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+      PROTOBUF_ENABLED: "true"
+    volumes:
+      - ./clickhouse/schema.proto:/etc/redpanda/protobuf/schema.proto:ro
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:8080 || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
 # Persistent volumes
 volumes:
   clickhouse_data:  # clickhouse persistent storage
     driver: local
+  clickhouse_logs:
   redpanda_data:  # redpanda persistent storage 
     driver: local

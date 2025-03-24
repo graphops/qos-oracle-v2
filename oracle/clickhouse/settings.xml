@@ -1,0 +1,5 @@
+<clickhouse>
+    <format_schema>
+        <allow_absolute_path>1</allow_absolute_path>
+    </format_schema>
+</clickhouse>

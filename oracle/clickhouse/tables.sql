@@ -7,11 +7,11 @@ CREATE TABLE IF NOT EXISTS kafka_qos_data
     query_id String,
     api_key String,
     user_id String,
-    subgraph Nullable(String),
+    subgraph String,
     result String,
     response_time_ms UInt32,
     request_bytes UInt32,
-    response_bytes Nullable(UInt32),
+    response_bytes UInt32,
     total_fees_usd Float64,
     indexer_queries Nested(
         indexer String,
@@ -32,12 +32,14 @@ SETTINGS
     kafka_topic_list = 'gateway_qos_topic',
     kafka_group_name = 'clickhouse_qos_consumer',
     kafka_format = 'Protobuf',
-    kafka_schema = '/etc/clickhouse-server/schema.proto:qos.ClientQueryProtobuf';
+    kafka_schema = 'schema.proto:qos.ClientQueryProtobuf',
+    kafka_max_block_size = 1,
+    kafka_poll_timeout_ms = 500;
 
 -- Create the destination table for the raw data
 CREATE TABLE IF NOT EXISTS raw_qos_data
 (
-    event_time DateTime,
+    event_time DateTime DEFAULT now(),
     gateway_id String,
     receipt_signer String,
     query_id String,
@@ -68,31 +70,7 @@ TTL event_time + INTERVAL 7 DAY;
 
 -- Create a simplified materialized view
 CREATE MATERIALIZED VIEW IF NOT EXISTS mv_raw_qos_data TO raw_qos_data AS
-SELECT
-    event_time,
-    gateway_id,
-    receipt_signer,
-    query_id,
-    api_key,
-    user_id,
-    subgraph,
-    result,
-    response_time_ms,
-    request_bytes,
-    response_bytes,
-    total_fees_usd,
-    indexer_queries.indexer,
-    indexer_queries.deployment,
-    indexer_queries.allocation,
-    indexer_queries.indexed_chain,
-    indexer_queries.url,
-    indexer_queries.fee_grt,
-    indexer_queries.response_time_ms,
-    indexer_queries.seconds_behind,
-    indexer_queries.result,
-    indexer_queries.indexer_errors,
-    indexer_queries.blocks_behind
-FROM kafka_qos_data;
+SELECT * FROM kafka_qos_data;
 
 -- Create the MaterializedView to process and store data from Kafka
 CREATE TABLE IF NOT EXISTS qos_data
