@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "oracle/test-producer",
-    "oracle/graphql-api"
+    "oracle/graphql-api",
 ]
+
 resolver = "2"

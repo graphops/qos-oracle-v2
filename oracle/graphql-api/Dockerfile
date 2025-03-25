@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------------------
 # 1. Global Build Arguments & Metadata
 # -----------------------------------------------------------------------------
-ARG RUST_VERSION=1.74
+ARG RUST_VERSION=1.84
 ARG DEBIAN_VERSION=bookworm
 ARG CHEF_IMAGE=lukemathwalker/cargo-chef:latest-rust-${RUST_VERSION}-slim-${DEBIAN_VERSION}
 ARG RUNTIME_BASE=gcr.io/distroless/cc-debian12:nonroot
@@ -29,26 +29,41 @@ FROM ${CHEF_IMAGE} AS builder
 ARG CARGO_BUILD_JOBS="default"
 ARG CARGO_PROFILE=release
 ENV RUSTFLAGS="-C opt-level=3 -C codegen-units=1"
+# Explicitly set C++ compiler path
+ENV CXX=/usr/bin/g++
+ENV CC=/usr/bin/gcc
 
-# Install build dependencies
+# Install build dependencies with proper C++ compiler setup
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     libssl-dev \
-    ca-certificates \
+    protobuf-compiler \
+    g++ \
+    build-essential \
+    cmake \
+    make \
+    python3 \
+    libsasl2-dev \
+    zlib1g-dev \
     binutils \
-    && rm -rf /var/lib/apt/lists/*
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/g++ /usr/bin/c++ \
+    && ls -la /usr/bin/g++ /usr/bin/c++ \
+    && g++ --version
 
 WORKDIR /app
 
 # Cook dependencies separately
 COPY --from=chef /app/recipe.json recipe.json
-RUN cargo chef cook --profile ${CARGO_PROFILE} --recipe-path recipe.json
+RUN CXX=/usr/bin/g++ CC=/usr/bin/gcc cargo chef cook --profile ${CARGO_PROFILE} --recipe-path recipe.json
 
 # Build the application
 COPY . .
-RUN cargo build --profile ${CARGO_PROFILE} --locked --jobs "${CARGO_BUILD_JOBS}" \
-    && strip target/${CARGO_PROFILE}/graphql_api \
-    && cp target/${CARGO_PROFILE}/graphql_api /app/graphql_api
+RUN cargo build --profile ${CARGO_PROFILE} --jobs "${CARGO_BUILD_JOBS}" \
+    && ls -la target/${CARGO_PROFILE}/ \
+    && strip target/${CARGO_PROFILE}/qos_graphql_api \
+    && cp target/${CARGO_PROFILE}/qos_graphql_api /app/graphql_api
 
 # -----------------------------------------------------------------------------
 # 4. Preparation Stage (Tini + Directory Setup)

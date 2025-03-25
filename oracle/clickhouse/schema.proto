@@ -7,14 +7,14 @@ message ClientQueryProtobuf {
   bytes receipt_signer = 2;
   string query_id = 3;
   string api_key = 4;
-  string user_id = 11;
-  string subgraph = 12;
   string result = 5;
   uint32 response_time_ms = 6;
   uint32 request_bytes = 7;
-  uint32 response_bytes = 8;
+  optional uint32 response_bytes = 8;
   double total_fees_usd = 9;
   repeated IndexerQueryProtobuf indexer_queries = 10;
+  string user_id = 11;
+  optional string subgraph = 12;
 }
 
 message IndexerQueryProtobuf {

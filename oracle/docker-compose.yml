@@ -93,8 +93,8 @@ services:
   # Test/development tools
   test-producer:
     build:
-      context: ./test-producer
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./test-producer/Dockerfile
     profiles: [all, dev]
     depends_on:
       redpanda:
@@ -102,7 +102,7 @@ services:
       clickhouse-server:
         condition: service_healthy
     volumes:
-      - ./clickhouse/schema.proto:/app/../clickhouse/schema.proto:ro
+      - ./clickhouse/schema.proto:/app/clickhouse/schema.proto:ro
     environment:
       KAFKA_BROKER: redpanda:9092
       MESSAGES_PER_SECOND: 5

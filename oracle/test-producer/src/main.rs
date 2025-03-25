@@ -121,10 +121,6 @@ pub struct ClientQueryProtobuf {
     pub query_id: String,
     #[prost(string, tag = "4")]
     pub api_key: String,
-    #[prost(string, tag = "11")]
-    pub user_id: String,
-    #[prost(string, optional, tag = "12")]
-    pub subgraph: Option<String>,
     #[prost(string, tag = "5")]
     pub result: String,
     #[prost(uint32, tag = "6")]
@@ -137,6 +133,10 @@ pub struct ClientQueryProtobuf {
     pub total_fees_usd: f64,
     #[prost(message, repeated, tag = "10")]
     pub indexer_queries: Vec<IndexerQueryProtobuf>,
+    #[prost(string, tag = "11")]
+    pub user_id: String,
+    #[prost(string, optional, tag = "12")]
+    pub subgraph: Option<String>,
 }
 
 #[derive(prost::Message)]
@@ -347,7 +347,7 @@ fn encode_client_request(client_request: ClientRequest, tap_signer: Address, gra
     // Encode to Protobuf
     let mut buf = Vec::new();
     client_query_msg.encode(&mut buf).unwrap();
-    
+
     // Return the raw protobuf message without length prefix
     buf
 }
@@ -404,6 +404,7 @@ async fn main() {
         // Encode using the gateway's exact logic
         let encoded_message = encode_client_request(client_request, tap_signer, graph_env.clone());
         
+        println!("Encoded message: {} ", hex::encode(&encoded_message));
         println!("Encoded message size: {} bytes", encoded_message.len());
         
         counter += 1;
