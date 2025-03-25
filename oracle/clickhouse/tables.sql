@@ -31,7 +31,7 @@ SETTINGS
     kafka_broker_list = 'redpanda:9092',
     kafka_topic_list = 'gateway_qos_topic',
     kafka_group_name = 'clickhouse_qos_consumer',
-    kafka_format = 'Protobuf',
+    kafka_format = 'ProtobufSingle',
     kafka_schema = 'schema.proto:qos.ClientQueryProtobuf',
     kafka_max_block_size = 1,
     kafka_poll_timeout_ms = 500;
