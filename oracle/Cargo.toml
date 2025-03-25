@@ -2,8 +2,7 @@
 [workspace]
 members = [
     "test-producer",
-    "graphql-api",
-    "clickhouse"
+    "graphql-api"
 ]
 
 [workspace.dependencies]

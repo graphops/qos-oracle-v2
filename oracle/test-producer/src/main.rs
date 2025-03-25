@@ -7,6 +7,7 @@ use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::util::get_rdkafka_version;
 use tokio::time;
 use prost::Message;
+use hex;
 
 // Mock types to match the gateway's dependencies
 mod mock {
