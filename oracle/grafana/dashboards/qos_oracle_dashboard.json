@@ -1,0 +1,452 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "id": null,
+  "panels": [
+    {
+      "type": "row",
+      "title": "Redpanda Overview",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Redpanda Uptime (seconds)",
+      "id": 1,
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "targets": [
+        {
+          "expr": "vectorized_application_uptime",
+          "legendFormat": "Instance: {{instance}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Redpanda Build Info",
+      "id": 2,
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "targets": [
+        {
+          "expr": "vectorized_application_build",
+          "legendFormat": "Build: {{version}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "FIPS Mode",
+      "id": 3,
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "targets": [
+        {
+          "expr": "vectorized_application_fips_mode",
+          "legendFormat": "{{instance}} - FIPS",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Under-Replicated Partitions",
+      "id": 4,
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "targets": [
+        {
+          "expr": "vectorized_cluster_partition_under_replicated_replicas",
+          "legendFormat": "URP",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto"
+      }
+    },
+    {
+      "type": "row",
+      "title": "Redpanda Traffic & Throughput",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Records Produced / Fetched per Sec",
+      "id": 5,
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        {
+          "expr": "rate(vectorized_cluster_partition_records_produced[1m])",
+          "legendFormat": "Produced",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(vectorized_cluster_partition_records_fetched[1m])",
+          "legendFormat": "Fetched",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Bytes Produced / Fetched per Sec",
+      "id": 6,
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "targets": [
+        {
+          "expr": "rate(vectorized_cluster_partition_bytes_produced_total[1m])",
+          "legendFormat": "Bytes Produced",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(vectorized_cluster_partition_bytes_fetched_total[1m])",
+          "legendFormat": "Bytes Fetched",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Redpanda Latencies & Connection Health",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Kafka Handler Latency (µs)",
+      "id": 7,
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 15 },
+      "targets": [
+        {
+          "expr": "rate(vectorized_kafka_handler_latency_microseconds[1m])",
+          "legendFormat": "Handler Latency",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Active Kafka Connections",
+      "id": 8,
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 15 },
+      "targets": [
+        {
+          "expr": "vectorized_kafka_rpc_active_connections",
+          "legendFormat": "{{instance}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Rejected Kafka Connections",
+      "id": 9,
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 15 },
+      "targets": [
+        {
+          "expr": "vectorized_kafka_rpc_connections_rejected",
+          "legendFormat": "Rejected",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Redpanda Resource Usage",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU Busy ms/s (approx)",
+      "id": 10,
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "expr": "irate(vectorized_reactor_cpu_busy_ms[1m])",
+          "legendFormat": "{{instance}}",
+          "refId": "A"
+        }
+      ],
+      "description": "CPU busy time in ms; using irate for approximate CPU usage."
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory Used / Available",
+      "id": 11,
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "targets": [
+        {
+          "expr": "vectorized_memory_allocated_memory",
+          "legendFormat": "Allocated",
+          "refId": "A"
+        },
+        {
+          "expr": "vectorized_memory_available_memory",
+          "legendFormat": "Available",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Disk Usage",
+      "id": 12,
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "targets": [
+        {
+          "expr": "vectorized_space_management_disk_usage_bytes",
+          "legendFormat": "Used Bytes",
+          "refId": "A"
+        },
+        {
+          "expr": "vectorized_space_management_target_disk_size_bytes",
+          "legendFormat": "Target Disk Size",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "I/O Queue Delays & Consumption",
+      "id": 13,
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "targets": [
+        {
+          "expr": "irate(vectorized_io_queue_delay[1m])",
+          "legendFormat": "I/O Delay (ms)",
+          "refId": "A"
+        },
+        {
+          "expr": "irate(vectorized_io_queue_consumption[1m])",
+          "legendFormat": "I/O Consumption (ms)",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "ClickHouse Overview",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 40 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Total Queries",
+      "id": 14,
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 41 },
+      "targets": [
+        {
+          "expr": "ClickHouseProfileEvents_Query",
+          "legendFormat": "All Queries",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Select Queries (Total)",
+      "id": 15,
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 41 },
+      "targets": [
+        {
+          "expr": "ClickHouseProfileEvents_SelectQuery",
+          "legendFormat": "Select",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Insert Queries (Total)",
+      "id": 16,
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 41 },
+      "targets": [
+        {
+          "expr": "ClickHouseProfileEvents_InsertQuery",
+          "legendFormat": "Insert",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Queries per Second",
+      "id": 17,
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 45 },
+      "targets": [
+        {
+          "expr": "rate(ClickHouseProfileEvents_Query[1m])",
+          "legendFormat": "Queries/s",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Query Time (µs) Rate",
+      "id": 18,
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 45 },
+      "targets": [
+        {
+          "expr": "rate(ClickHouseProfileEvents_QueryTimeMicroseconds[1m])",
+          "legendFormat": "Query Time µs/s",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "ClickHouse Inserts & Merges",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 53 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Inserted Rows/s",
+      "id": 19,
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 54 },
+      "targets": [
+        {
+          "expr": "rate(ClickHouseProfileEvents_InsertedRows[1m])",
+          "legendFormat": "Rows/s",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Merged Rows/s",
+      "id": 20,
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 54 },
+      "targets": [
+        {
+          "expr": "rate(ClickHouseProfileEvents_MergedRows[1m])",
+          "legendFormat": "Merged/s",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Merges Time (ms/s)",
+      "id": 21,
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 54 },
+      "targets": [
+        {
+          "expr": "rate(ClickHouseProfileEvents_MergesTimeMilliseconds[1m])",
+          "legendFormat": "Merges Time ms/s",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "ClickHouse Resource Usage",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 62 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "ClickHouse Memory Tracking (bytes)",
+      "id": 22,
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 63 },
+      "targets": [
+        {
+          "expr": "ClickHouseMetrics_MemoryTracking",
+          "legendFormat": "Memory In Use",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "MergeTree Disk Usage / Available",
+      "id": 23,
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 63 },
+      "targets": [
+        {
+          "expr": "ClickHouseAsyncMetrics_TotalBytesOfMergeTreeTables",
+          "legendFormat": "Total Bytes of MergeTree",
+          "refId": "A"
+        },
+        {
+          "expr": "ClickHouseAsyncMetrics_DiskAvailable_default",
+          "legendFormat": "Disk Available (default)",
+          "refId": "B"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 36,
+  "style": "dark",
+  "tags": ["qos_oracle"],
+  "timezone": "",
+  "title": "QoS Oracle: ClickHouse & Redpanda Overview",
+  "uid": "qos-oracle-clickhouse-redpanda",
+  "version": 2
+}
