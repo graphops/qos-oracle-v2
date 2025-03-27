@@ -152,7 +152,7 @@ services:
       - '--storage.tsdb.path=/prometheus'
       - '--storage.tsdb.retention.time=7d'   # Example retention: 7 days
       - '--web.enable-lifecycle'            # If you want to allow config reload via HTTP
-    export:
+    expose:
       - "9090"
     ports:
       - '9090:9090'
