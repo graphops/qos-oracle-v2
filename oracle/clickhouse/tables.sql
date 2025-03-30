@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS raw_qos_data
     )
 ) ENGINE = MergeTree()
 ORDER BY (event_time, gateway_id)
+PARTITION BY toYYYYMMDD(event_time)
 TTL event_time + INTERVAL 7 DAY;
 
 -- Create a simplified materialized view
@@ -101,7 +102,8 @@ CREATE TABLE IF NOT EXISTS qos_data
         blocks_behind UInt64
     )
 ) ENGINE = MergeTree()
-ORDER BY (event_time, gateway_id, query_id);
+ORDER BY (event_time, gateway_id, query_id)
+PARTITION BY toYYYYMMDD(event_time);
 
 -- Only create the materialized view if it doesn't exist already
 CREATE MATERIALIZED VIEW IF NOT EXISTS qos_data_mv TO qos_data AS
