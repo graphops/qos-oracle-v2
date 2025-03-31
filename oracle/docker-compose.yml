@@ -7,14 +7,14 @@ x-default-healthcheck: &default-healthcheck
 
 x-clickhouse-env: &clickhouse-env
   CLICKHOUSE_DB: default
-  CLICKHOUSE_USER: default
-  CLICKHOUSE_PASSWORD: ""
+  CLICKHOUSE_USER: graphql
+  CLICKHOUSE_PASSWORD: graphql_password
 
 # Services
 services:
   # Core dependencies
   clickhouse-server:
-    image: clickhouse/clickhouse-server:22.1
+    image: clickhouse/clickhouse-server:25.3
     profiles: [all, deps, dev]
     expose:
       - "8123"  # HTTP interface
@@ -29,14 +29,13 @@ services:
       - ./clickhouse/tables.sql:/docker-entrypoint-initdb.d/tables.sql:ro
       - ./clickhouse/allow_schema_path.xml:/etc/clickhouse-server/config.d/allow_schema_path.xml:ro
       - ./clickhouse/settings.xml:/etc/clickhouse-server/config.d/settings.xml:ro
+      - ./clickhouse/users.xml:/etc/clickhouse-server/users.d/users.xml:ro
       - clickhouse_data:/var/lib/clickhouse
       - clickhouse_logs:/var/log/clickhouse-server
     ulimits:
       nofile:
         soft: 262144
         hard: 262144
-    environment:
-      <<: *clickhouse-env
     healthcheck:
       <<: *default-healthcheck
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
@@ -89,8 +88,8 @@ services:
       clickhouse-server:
         condition: service_healthy
     environment:
+      <<: *clickhouse-env
       CLICKHOUSE_URL: http://clickhouse-server:8123
-      CLICKHOUSE_DB: default
     healthcheck:
       <<: *default-healthcheck
       test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]

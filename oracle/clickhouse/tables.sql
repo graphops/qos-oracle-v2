@@ -1,7 +1,6 @@
 -- Create the Kafka engine table to ingest Protobuf messages
 CREATE TABLE IF NOT EXISTS kafka_qos_data
 (
-    event_time DateTime DEFAULT now(),
     gateway_id String,
     receipt_signer String,
     query_id String,
@@ -39,7 +38,7 @@ SETTINGS
 -- Create the destination table for the raw data
 CREATE TABLE IF NOT EXISTS raw_qos_data
 (
-    event_time DateTime DEFAULT now(),
+    event_time DateTime,
     gateway_id String,
     receipt_signer String,
     query_id String,
@@ -69,14 +68,28 @@ ORDER BY (event_time, gateway_id)
 PARTITION BY toYYYYMMDD(event_time)
 TTL event_time + INTERVAL 7 DAY;
 
--- Create a simplified materialized view
+-- Create a simplified materialized view that also captures the timestamp
 CREATE MATERIALIZED VIEW IF NOT EXISTS mv_raw_qos_data TO raw_qos_data AS
-SELECT * FROM kafka_qos_data;
+SELECT
+    now() as event_time,
+    gateway_id,
+    receipt_signer,
+    query_id,
+    api_key,
+    user_id,
+    subgraph,
+    result,
+    response_time_ms,
+    request_bytes,
+    response_bytes,
+    total_fees_usd,
+    indexer_queries
+FROM kafka_qos_data;
 
--- Create the MaterializedView to process and store data from Kafka
+-- Create the table for processed QoS data
 CREATE TABLE IF NOT EXISTS qos_data
 (
-    event_time DateTime DEFAULT now(),
+    event_time DateTime,
     gateway_id String,
     receipt_signer String,
     query_id String,
@@ -105,6 +118,30 @@ CREATE TABLE IF NOT EXISTS qos_data
 ORDER BY (event_time, gateway_id, query_id)
 PARTITION BY toYYYYMMDD(event_time);
 
--- Only create the materialized view if it doesn't exist already
+-- Create the materialized view that processes and transforms the data
 CREATE MATERIALIZED VIEW IF NOT EXISTS qos_data_mv TO qos_data AS
-SELECT * FROM kafka_qos_data;
+SELECT
+    now() as event_time,
+    gateway_id,
+    HEX(receipt_signer) AS receipt_signer,
+    query_id,
+    api_key,
+    user_id,
+    subgraph,
+    result,
+    response_time_ms,
+    request_bytes,
+    response_bytes,
+    total_fees_usd,
+    arrayMap(x -> HEX(x), indexer_queries.indexer) AS `indexer_queries.indexer`,
+    arrayMap(x -> HEX(x), indexer_queries.deployment) AS `indexer_queries.deployment`,
+    arrayMap(x -> HEX(x), indexer_queries.allocation) AS `indexer_queries.allocation`,
+    indexer_queries.indexed_chain AS `indexer_queries.indexed_chain`,
+    indexer_queries.url AS `indexer_queries.url`,
+    indexer_queries.fee_grt AS `indexer_queries.fee_grt`,
+    indexer_queries.response_time_ms AS `indexer_queries.response_time_ms`,
+    indexer_queries.seconds_behind AS `indexer_queries.seconds_behind`,
+    indexer_queries.result AS `indexer_queries.result`,
+    indexer_queries.indexer_errors AS `indexer_queries.indexer_errors`,
+    indexer_queries.blocks_behind AS `indexer_queries.blocks_behind`
+FROM kafka_qos_data;
