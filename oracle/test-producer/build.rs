@@ -5,4 +5,4 @@ fn main() {
     println!("cargo:rerun-if-changed={}", proto_file);
 
     prost_build::compile_protos(&[proto_file], &["."]).unwrap();
-} 
+}

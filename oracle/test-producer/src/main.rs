@@ -1,35 +1,35 @@
 use std::env;
 use std::time::Duration;
 
+use hex;
+use prost::Message;
 use rand::Rng;
 use rdkafka::config::ClientConfig;
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::util::get_rdkafka_version;
 use tokio::time;
-use prost::Message;
-use hex;
 
 // Mock types to match the gateway's dependencies
 mod mock {
     #[derive(Clone, Copy, PartialEq, Eq, Hash)]
     pub struct DeploymentId(pub [u8; 32]);
-    
+
     #[derive(Clone, Copy, PartialEq, Eq, Hash)]
     pub struct IndexerId(pub [u8; 20]);
-    
+
     #[derive(Clone)]
     pub struct SubgraphId(pub String);
-    
+
     #[derive(Clone, Copy, PartialEq, Eq, Hash)]
     pub struct Address(pub [u8; 20]);
-    
+
     impl std::ops::Deref for IndexerId {
         type Target = Address;
         fn deref(&self) -> &Self::Target {
             unsafe { std::mem::transmute(self) }
         }
     }
-    
+
     impl DeploymentId {
         pub fn to_vec(&self) -> Vec<u8> {
             self.0.to_vec()
@@ -41,24 +41,24 @@ mod mock {
             self.0.to_vec()
         }
     }
-    
+
     impl SubgraphId {
         pub fn to_string(&self) -> String {
             self.0.clone()
         }
     }
-    
+
     impl Address {
         pub fn to_vec(&self) -> Vec<u8> {
             self.0.to_vec()
         }
     }
-    
+
     // Mock error types
     pub enum Error {
         QueryFailed(String),
     }
-    
+
     impl ToString for Error {
         fn to_string(&self) -> String {
             match self {
@@ -66,12 +66,12 @@ mod mock {
             }
         }
     }
-    
+
     pub enum IndexerError {
         NetworkError(String),
         Timeout,
     }
-    
+
     impl ToString for IndexerError {
         fn to_string(&self) -> String {
             match self {
@@ -80,27 +80,27 @@ mod mock {
             }
         }
     }
-    
+
     // Mock Receipt
     pub struct Receipt {
         allocation: Address,
         value: u64,
     }
-    
+
     impl Receipt {
         pub fn new(allocation: Address, value: u64) -> Self {
             Self { allocation, value }
         }
-        
+
         pub fn allocation(&self) -> Address {
             self.allocation
         }
-        
+
         pub fn value(&self) -> u64 {
             self.value
         }
     }
-    
+
     // Simplified IndexerResponse without attestation
     pub struct IndexerResponse {
         pub errors: Vec<String>,
@@ -176,7 +176,7 @@ pub struct ClientRequest {
     pub api_key: String,
     pub user: String,
     pub subgraph: Option<SubgraphId>,
-    pub grt_per_usd: f64,  // Using f64 instead of NotNan<f64> for simplicity
+    pub grt_per_usd: f64, // Using f64 instead of NotNan<f64> for simplicity
     pub indexer_requests: Vec<IndexerRequest>,
     pub request_bytes: u32,
     pub response_bytes: Option<u32>,
@@ -202,6 +202,24 @@ fn random_bytes(len: usize) -> Vec<u8> {
     bytes
 }
 
+// Generate a random string that's guaranteed to be valid UTF-8
+fn random_utf8_string(prefix: &str, len: usize) -> String {
+    use rand::{thread_rng, Rng};
+
+    let suffix: String = thread_rng()
+        .sample_iter(&rand::distributions::Alphanumeric)
+        .take(len)
+        .map(char::from)
+        .collect();
+
+    format!("{}-{}", prefix, suffix)
+}
+
+// Generate random hex string (guaranteed valid UTF-8) from random bytes
+fn random_hex_string(len: usize) -> String {
+    hex::encode(random_bytes(len))
+}
+
 fn random_address() -> Address {
     let mut bytes = [0u8; 20];
     rand::thread_rng().fill(&mut bytes);
@@ -222,33 +240,39 @@ fn random_indexer_id() -> IndexerId {
 
 fn generate_random_client_request() -> ClientRequest {
     let mut rng = rand::thread_rng();
-    
+
     // Generate between 1 and 4 indexer requests
     let num_indexers = rng.gen_range(1..5);
     let mut indexer_requests = Vec::with_capacity(num_indexers);
-    
+
     for _ in 0..num_indexers {
-        let success = rng.gen_bool(0.9);  // 90% success rate
-        
+        let success = rng.gen_bool(0.9); // 90% success rate
+
         let indexer_id = random_indexer_id();
         let allocation = random_address();
-        
+
         let result = if success {
-            Ok(IndexerResponse {
-                errors: vec![],
-            })
+            Ok(IndexerResponse { errors: vec![] })
         } else {
-            let error_types = ["Timeout", "Bad Gateway", "Internal Server Error"];
+            // Use safe error types with valid UTF-8
             Err(IndexerError::NetworkError(
-                error_types[rng.gen_range(0..error_types.len())].to_string()
+                "Error processing request".to_string(),
             ))
         };
-        
+
         indexer_requests.push(IndexerRequest {
             indexer: indexer_id,
             deployment: random_deployment_id(),
-            url: format!("https://api.thegraph.com/subgraphs/id/QmIndexer{}", rng.gen_range(1000..9999)),
-            receipt: Receipt::new(allocation, rng.gen_range(100_000_000_000_000..1_000_000_000_000_000)),
+            // Ensure URL is valid UTF-8
+            url: format!(
+                "https://api.thegraph.com/subgraphs/id/Qm{}",
+                random_hex_string(10)
+            ),
+            receipt: Receipt::new(
+                allocation,
+                rng.gen_range(100_000_000_000_000..1_000_000_000_000_000),
+            ),
+            // Ensure chain name is valid UTF-8
             subgraph_chain: "mainnet".to_string(),
             result,
             response_time_ms: rng.gen_range(50..2000) as u16,
@@ -256,25 +280,29 @@ fn generate_random_client_request() -> ClientRequest {
             blocks_behind: rng.gen_range(0..50),
         });
     }
-    
-    let success = rng.gen_bool(0.95);  // 95% success rate for overall query
-    
+
+    let success = rng.gen_bool(0.95); // 95% success rate for overall query
+
     ClientRequest {
-        id: format!("{:x}", rng.gen::<u128>()),
+        // Use random hex for IDs (guaranteed valid UTF-8)
+        id: random_hex_string(16),
         response_time_ms: rng.gen_range(50..5000) as u16,
         result: if success {
             Ok(())
         } else {
+            // Use predefined error message to ensure UTF-8
             Err(Error::QueryFailed("Query validation error".to_string()))
         },
-        api_key: format!("api-{:x}", rng.gen::<u64>()),
-        user: format!("user-{:x}", rng.gen::<u64>()),
+        // Use random alphanumeric strings with prefixes
+        api_key: random_utf8_string("api", 16),
+        user: random_utf8_string("user", 16),
         subgraph: if rng.gen_bool(0.9) {
-            Some(SubgraphId(format!("Qm{}", hex::encode(random_bytes(10)))))
+            // Guarantee valid UTF-8 for subgraph ID
+            Some(SubgraphId(format!("Qm{}", random_hex_string(10))))
         } else {
             None
         },
-        grt_per_usd: rng.gen_range(0.05..0.2),  // Realistic GRT/USD price range
+        grt_per_usd: rng.gen_range(0.05..0.2), // Realistic GRT/USD price range
         indexer_requests,
         request_bytes: rng.gen_range(100..5000),
         response_bytes: if rng.gen_bool(0.95) {
@@ -286,7 +314,11 @@ fn generate_random_client_request() -> ClientRequest {
 }
 
 // Function that matches the logic in gateway's report function but without attestation
-fn encode_client_request(client_request: ClientRequest, tap_signer: Address, graph_env: String) -> Vec<u8> {
+fn encode_client_request(
+    client_request: ClientRequest,
+    tap_signer: Address,
+    graph_env: String,
+) -> Vec<u8> {
     let indexer_queries = client_request
         .indexer_requests
         .iter()
@@ -366,25 +398,24 @@ async fn main() {
     let delay = Duration::from_micros(1_000_000 / mps);
 
     // Allow configuring the broker address from environment
-    let broker = env::var("KAFKA_BROKER")
-        .unwrap_or_else(|_| "redpanda:9092".to_string());
-    
+    let broker = env::var("KAFKA_BROKER").unwrap_or_else(|_| "redpanda:9092".to_string());
+
     println!("Connecting to Kafka broker at {}", broker);
-    
+
     // Wait for Redpanda to be fully ready
-    println!("Waiting 15 seconds for Redpanda to initialize...");
-    time::sleep(Duration::from_secs(15)).await;
-    
+    println!("Waiting 5 seconds for Redpanda to initialize...");
+    time::sleep(Duration::from_secs(5)).await;
+
     // Create a Kafka producer with explicit PLAINTEXT protocol
     let producer: FutureProducer = ClientConfig::new()
         .set("bootstrap.servers", &broker)
         .set("message.timeout.ms", "30000")
         .set("security.protocol", "PLAINTEXT")
         .set("debug", "all")
-        .set("enable.idempotence", "false")  // Simplify for testing
-        .set("retries", "5")                 // Retry a few times
-        .set("retry.backoff.ms", "1000")     // 1 second between retries
-        .set("socket.timeout.ms", "10000")   // 10 seconds socket timeout
+        .set("enable.idempotence", "false") // Simplify for testing
+        .set("retries", "5") // Retry a few times
+        .set("retry.backoff.ms", "1000") // 1 second between retries
+        .set("socket.timeout.ms", "10000") // 10 seconds socket timeout
         .set("socket.keepalive.enable", "true")
         .create()
         .expect("Producer creation error");
@@ -392,23 +423,24 @@ async fn main() {
     // Make sure this matches the topic name in ClickHouse Kafka engine
     let topic = "gateway_qos_topic";
     let mut counter = 0;
-    
+
     // Create a fixed tap_signer and graph_env to use for all messages
     let tap_signer = random_address();
+    // Ensure graph_env is valid UTF-8
     let graph_env = "testnet-gateway".to_string();
 
     loop {
         // Generate a random client request
         let client_request = generate_random_client_request();
-        
+
         // Encode using the gateway's exact logic
         let encoded_message = encode_client_request(client_request, tap_signer, graph_env.clone());
-        
+
         println!("Encoded message: {} ", hex::encode(&encoded_message));
         println!("Encoded message size: {} bytes", encoded_message.len());
-        
+
         counter += 1;
-        
+
         match producer
             .send(
                 FutureRecord::to(topic)
