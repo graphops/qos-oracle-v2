@@ -65,8 +65,9 @@ struct QosReportRow {
 }
 
 // Count query result struct
-#[derive(Row, Deserialize, Debug)]
+#[derive(Row, Deserialize, Debug, Clone)]
 struct CountResult {
+    #[allow(dead_code)] // Allow dead code as it's used for deserialization only
     count: u64,
 }
 
@@ -91,35 +92,101 @@ impl AggregationInterval {
 
 // --- Deployment Aggregation Structs ---
 
-#[derive(SimpleObject, Deserialize, Debug, Clone)]
-#[graphql(name = "DeploymentAggregation")] // Explicit name for GraphQL schema
-struct DeploymentAggregationOutput {
-    time_bucket: String, // Output as String
-    subgraph: String,
-    gateway_id: String,
-    query_count: u64,
-    success_count: u64,
-    failure_count: u64,
-    avg_response_time_ms: f64,
-    total_fees_usd: f64,
-}
-
-#[derive(Row, Deserialize, Debug, Clone)]
+#[derive(Row, Deserialize, Debug, Clone, SimpleObject)]
 struct DeploymentAggregationRow {
-    time_bucket: u32, // Use u32 for Unix timestamp
+    time_bucket: u32,
     subgraph: String,
     gateway_id: String,
     query_count: u64,
     success_count: u64,
     failure_count: u64,
     avg_response_time_ms: f64,
+    max_response_time_ms: u32,
+    p90_response_time_ms: f64,
+    p99_response_time_ms: f64,
+    stddev_response_time_ms: f64,
     total_fees_usd: f64,
+    avg_fee_usd: f64,
+    max_fee_usd: f64,
+    p90_fee_usd: f64,
+    p99_fee_usd: f64,
+    stddev_fee_usd: f64,
+    success_proportion: f64,
 }
 
-// --- Indexer Aggregation Structs ---
+#[derive(SimpleObject, Debug, Clone)]
+struct DeploymentAggregationOutput {
+    time_bucket: String,
+    subgraph: String,
+    gateway_id: String,
+    query_count: u64,
+    success_count: u64,
+    failure_count: u64,
+    // Latency
+    #[graphql(name = "avgResponseTimeMs")]
+    avg_response_time_ms: Option<f64>,
+    #[graphql(name = "maxResponseTimeMs")]
+    max_response_time_ms: Option<u32>,
+    #[graphql(name = "p90ResponseTimeMs")]
+    p90_response_time_ms: Option<f64>,
+    #[graphql(name = "p99ResponseTimeMs")]
+    p99_response_time_ms: Option<f64>,
+    #[graphql(name = "stddevResponseTimeMs")]
+    stddev_response_time_ms: Option<f64>,
+    // Fees
+    #[graphql(name = "totalFeesUsd")]
+    total_fees_usd: Option<f64>,
+    #[graphql(name = "avgFeeUsd")]
+    avg_fee_usd: Option<f64>,
+    #[graphql(name = "maxFeeUsd")]
+    max_fee_usd: Option<f64>,
+    #[graphql(name = "p90FeeUsd")]
+    p90_fee_usd: Option<f64>,
+    #[graphql(name = "p99FeeUsd")]
+    p99_fee_usd: Option<f64>,
+    #[graphql(name = "stddevFeeUsd")]
+    stddev_fee_usd: Option<f64>,
+    // Success
+    #[graphql(name = "successProportion")]
+    success_proportion: Option<f64>,
+}
 
-#[derive(SimpleObject, Deserialize, Debug, Clone)]
-#[graphql(name = "IndexerAggregation")]
+// --- Indexer Aggregation Structs (Updated) ---
+
+#[derive(Row, Deserialize, Debug, Clone, SimpleObject)]
+struct IndexerAggregationRow {
+    time_bucket: u32,
+    indexer: String,
+    gateway_id: String,
+    query_count: u64,
+    success_count: u64,
+    failure_count: u64,
+    avg_indexer_response_time_ms: f64,
+    max_indexer_response_time_ms: u32,
+    p90_indexer_response_time_ms: f64,
+    p99_indexer_response_time_ms: f64,
+    stddev_indexer_response_time_ms: f64,
+    total_fee_grt: f64,
+    avg_fee_grt: f64,
+    max_fee_grt: f64,
+    p90_fee_grt: f64,
+    p99_fee_grt: f64,
+    stddev_fee_grt: f64,
+    avg_seconds_behind: f64,
+    max_seconds_behind: u32,
+    p90_seconds_behind: f64,
+    p99_seconds_behind: f64,
+    stddev_seconds_behind: f64,
+    avg_blocks_behind: f64,
+    max_blocks_behind: u64,
+    p90_blocks_behind: f64,
+    p99_blocks_behind: f64,
+    stddev_blocks_behind: f64,
+    success_proportion: f64,
+}
+
+#[derive(SimpleObject, Debug, Clone)]
+#[graphql(name = "IndexerAggregation")] // Keep existing name if desired
 struct IndexerAggregationOutput {
     time_bucket: String,
     indexer: String,
@@ -127,29 +194,59 @@ struct IndexerAggregationOutput {
     query_count: u64,
     success_count: u64,
     failure_count: u64,
-    avg_indexer_response_time_ms: f64,
-    total_fee_grt: f64,
-    avg_seconds_behind: f64,
-    avg_blocks_behind: f64,
-}
-
-#[derive(Row, Deserialize, Debug, Clone)]
-struct IndexerAggregationRow {
-    time_bucket: u32, // Use u32 for Unix timestamp
-    indexer: String,
-    gateway_id: String,
-    query_count: u64,
-    success_count: u64,
-    failure_count: u64,
-    avg_indexer_response_time_ms: f64,
-    total_fee_grt: f64,
-    avg_seconds_behind: f64,
-    avg_blocks_behind: f64,
+    // Latency
+    #[graphql(name = "avgIndexerResponseTimeMs")]
+    avg_indexer_response_time_ms: Option<f64>,
+    #[graphql(name = "maxIndexerResponseTimeMs")]
+    max_indexer_response_time_ms: Option<u32>,
+    #[graphql(name = "p90IndexerResponseTimeMs")]
+    p90_indexer_response_time_ms: Option<f64>,
+    #[graphql(name = "p99IndexerResponseTimeMs")]
+    p99_indexer_response_time_ms: Option<f64>,
+    #[graphql(name = "stddevIndexerResponseTimeMs")]
+    stddev_indexer_response_time_ms: Option<f64>,
+    // Fees
+    #[graphql(name = "totalFeeGrt")]
+    total_fee_grt: Option<f64>,
+    #[graphql(name = "avgFeeGrt")]
+    avg_fee_grt: Option<f64>,
+    #[graphql(name = "maxFeeGrt")]
+    max_fee_grt: Option<f64>,
+    #[graphql(name = "p90FeeGrt")]
+    p90_fee_grt: Option<f64>,
+    #[graphql(name = "p99FeeGrt")]
+    p99_fee_grt: Option<f64>,
+    #[graphql(name = "stddevFeeGrt")]
+    stddev_fee_grt: Option<f64>,
+    // Behindness
+    #[graphql(name = "avgSecondsBehind")]
+    avg_seconds_behind: Option<f64>,
+    #[graphql(name = "maxSecondsBehind")]
+    max_seconds_behind: Option<u32>,
+    #[graphql(name = "p90SecondsBehind")]
+    p90_seconds_behind: Option<f64>,
+    #[graphql(name = "p99SecondsBehind")]
+    p99_seconds_behind: Option<f64>,
+    #[graphql(name = "stddevSecondsBehind")]
+    stddev_seconds_behind: Option<f64>,
+    #[graphql(name = "avgBlocksBehind")]
+    avg_blocks_behind: Option<f64>,
+    #[graphql(name = "maxBlocksBehind")]
+    max_blocks_behind: Option<u64>,
+    #[graphql(name = "p90BlocksBehind")]
+    p90_blocks_behind: Option<f64>,
+    #[graphql(name = "p99BlocksBehind")]
+    p99_blocks_behind: Option<f64>,
+    #[graphql(name = "stddevBlocksBehind")]
+    stddev_blocks_behind: Option<f64>,
+    // Success
+    #[graphql(name = "successProportion")]
+    success_proportion: Option<f64>,
 }
 
 // --- Allocation Aggregation Structs ---
 
-#[derive(Row, Deserialize, Debug, Clone)]
+#[derive(Row, Deserialize, Debug, Clone, SimpleObject)]
 struct AllocationAggregationRow {
     time_bucket: u32,
     subgraph: String,
@@ -159,24 +256,86 @@ struct AllocationAggregationRow {
     success_count: u64,
     failure_count: u64,
     avg_indexer_response_time_ms: f64,
+    max_indexer_response_time_ms: u32,
+    p90_indexer_response_time_ms: f64,
+    p99_indexer_response_time_ms: f64,
+    stddev_indexer_response_time_ms: f64,
     total_fee_grt: f64,
+    avg_fee_grt: f64,
+    max_fee_grt: f64,
+    p90_fee_grt: f64,
+    p99_fee_grt: f64,
+    stddev_fee_grt: f64,
     avg_seconds_behind: f64,
+    max_seconds_behind: u32,
+    p90_seconds_behind: f64,
+    p99_seconds_behind: f64,
+    stddev_seconds_behind: f64,
     avg_blocks_behind: f64,
+    max_blocks_behind: u64,
+    p90_blocks_behind: f64,
+    p99_blocks_behind: f64,
+    stddev_blocks_behind: f64,
+    success_proportion: f64,
 }
 
 #[derive(SimpleObject, Debug, Clone)]
 struct AllocationAggregationOutput {
-    time_bucket: String, // Formatted as RFC3339
+    time_bucket: String,
     subgraph: String,
     indexer: String,
     gateway_id: String,
     query_count: u64,
     success_count: u64,
     failure_count: u64,
-    avg_indexer_response_time_ms: f64,
-    total_fee_grt: f64,
-    avg_seconds_behind: f64,
-    avg_blocks_behind: f64,
+    // Latency
+    #[graphql(name = "avgIndexerResponseTimeMs")]
+    avg_indexer_response_time_ms: Option<f64>,
+    #[graphql(name = "maxIndexerResponseTimeMs")]
+    max_indexer_response_time_ms: Option<u32>,
+    #[graphql(name = "p90IndexerResponseTimeMs")]
+    p90_indexer_response_time_ms: Option<f64>,
+    #[graphql(name = "p99IndexerResponseTimeMs")]
+    p99_indexer_response_time_ms: Option<f64>,
+    #[graphql(name = "stddevIndexerResponseTimeMs")]
+    stddev_indexer_response_time_ms: Option<f64>,
+    // Fees
+    #[graphql(name = "totalFeeGrt")]
+    total_fee_grt: Option<f64>,
+    #[graphql(name = "avgFeeGrt")]
+    avg_fee_grt: Option<f64>,
+    #[graphql(name = "maxFeeGrt")]
+    max_fee_grt: Option<f64>,
+    #[graphql(name = "p90FeeGrt")]
+    p90_fee_grt: Option<f64>,
+    #[graphql(name = "p99FeeGrt")]
+    p99_fee_grt: Option<f64>,
+    #[graphql(name = "stddevFeeGrt")]
+    stddev_fee_grt: Option<f64>,
+    // Behindness
+    #[graphql(name = "avgSecondsBehind")]
+    avg_seconds_behind: Option<f64>,
+    #[graphql(name = "maxSecondsBehind")]
+    max_seconds_behind: Option<u32>,
+    #[graphql(name = "p90SecondsBehind")]
+    p90_seconds_behind: Option<f64>,
+    #[graphql(name = "p99SecondsBehind")]
+    p99_seconds_behind: Option<f64>,
+    #[graphql(name = "stddevSecondsBehind")]
+    stddev_seconds_behind: Option<f64>,
+    #[graphql(name = "avgBlocksBehind")]
+    avg_blocks_behind: Option<f64>,
+    #[graphql(name = "maxBlocksBehind")]
+    max_blocks_behind: Option<u64>,
+    #[graphql(name = "p90BlocksBehind")]
+    p90_blocks_behind: Option<f64>,
+    #[graphql(name = "p99BlocksBehind")]
+    p99_blocks_behind: Option<f64>,
+    #[graphql(name = "stddevBlocksBehind")]
+    stddev_blocks_behind: Option<f64>,
+    // Success
+    #[graphql(name = "successProportion")]
+    success_proportion: Option<f64>,
 }
 
 // --- Input Objects for Filtering ---
@@ -207,14 +366,15 @@ struct QueryRoot;
 
 #[Object]
 impl QueryRoot {
-    /// Query for raw QoS Reports (limited fields for now)
+    /// Query for raw QoS reports
     async fn qos_reports(
         &self,
-        ctx: &Context<'_>,
+        _ctx: &Context<'_>, // Prefix ctx with underscore
         time_range: TimeRangeInput,
         #[graphql(desc = "Optional filters for the query")] filter: Option<AggregationFilterInput>,
         #[graphql(desc = "Maximum number of records to return (default 1000, max 10000)")]
         limit: Option<i32>,
+        #[graphql(desc = "Number of records to skip (for pagination)")] offset: Option<i32>,
     ) -> Result<Vec<QosReport>, String> {
         let client = get_clickhouse_client()?;
 
@@ -253,13 +413,14 @@ impl QueryRoot {
         } else {
             format!("WHERE {}", conditions.join(" AND "))
         };
-        let query_limit = limit.unwrap_or(1000).max(0).min(10000); // Apply limits
+        let query_offset = offset.unwrap_or(0).max(0);
+        let query_limit = limit.unwrap_or(1000).clamp(0, 10000); // Use clamp
 
         let query = format!(
             "SELECT event_time, gateway_id, receipt_signer, query_id, api_key, user_id, \
                     subgraph, result, response_time_ms, request_bytes, response_bytes, total_fees_usd \
-             FROM qos_data {} ORDER BY event_time DESC LIMIT {}",
-            where_clause, query_limit
+             FROM qos_data {} ORDER BY event_time DESC LIMIT {} OFFSET {}",
+            where_clause, query_limit, query_offset
         );
 
         println!("Executing query: {}", query);
@@ -293,18 +454,14 @@ impl QueryRoot {
             .collect())
     }
 
-    /// Query for Deployment level aggregations
-    async fn deployment_aggregations(
+    /// Query for the total count of QoS reports matching the criteria
+    async fn qos_reports_count(
         &self,
-        ctx: &Context<'_>,
-        interval: AggregationInterval,
+        _ctx: &Context<'_>, // Prefix ctx with underscore
         time_range: TimeRangeInput,
         #[graphql(desc = "Optional filters for the query")] filter: Option<AggregationFilterInput>,
-        #[graphql(desc = "Maximum number of records to return (default 1000, max 10000)")]
-        limit: Option<i32>,
-    ) -> Result<Vec<DeploymentAggregationOutput>, String> {
+    ) -> Result<u64, String> {
         let client = get_clickhouse_client()?;
-        let table_name = format!("agg_deployment_{}", interval.table_suffix());
 
         // Build WHERE clause
         let mut conditions = Vec::new();
@@ -314,7 +471,72 @@ impl QueryRoot {
         let to_dt = DateTime::parse_from_rfc3339(&time_range.to)
             .map_err(|e| format!("Invalid 'to' timestamp format: {}", e))?
             .with_timezone(&Utc);
-        conditions.push(format!("time_bucket >= toDateTime({})", from_dt.timestamp()));
+
+        conditions.push(format!("event_time >= toDateTime({})", from_dt.timestamp()));
+        conditions.push(format!("event_time < toDateTime({})", to_dt.timestamp()));
+
+        if let Some(f) = filter {
+            if let Some(gw) = &f.gateway_id {
+                conditions.push(format!("gateway_id = '{}'", gw));
+            }
+            if let Some(sg) = &f.subgraph {
+                // Handle nullable subgraph field correctly
+                conditions.push(format!("subgraph = '{}'", sg));
+            }
+            // Filtering by indexer/allocation on raw reports requires arrayExists/has,
+            // which can be slow. Skipping for now.
+            // if let Some(ix) = &f.indexer {
+            //     conditions.push(format!("has(indexer_queries.indexer, '{}')", ix));
+            // }
+            // if let Some(alloc) = &f.allocation {
+            //     conditions.push(format!("has(indexer_queries.allocation, '{}')", alloc));
+            // }
+        }
+
+        let where_clause = if conditions.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", conditions.join(" AND "))
+        };
+
+        let query = format!("SELECT count(*) FROM qos_data {}", where_clause);
+
+        println!("Executing query: {}", query);
+
+        let count = client
+            .query(&query)
+            .fetch_one::<CountResult>()
+            .await
+            .map_err(|e| format!("Database query failed: {}", e))?;
+
+        Ok(count.count)
+    }
+
+    /// Query for Deployment level aggregations
+    async fn deployment_aggregations(
+        &self,
+        _ctx: &Context<'_>, // Prefix ctx with underscore
+        interval: AggregationInterval,
+        time_range: TimeRangeInput,
+        #[graphql(desc = "Optional filters for the query")] filter: Option<AggregationFilterInput>,
+        #[graphql(desc = "Maximum number of records to return (default 1000, max 10000)")]
+        limit: Option<i32>,
+    ) -> Result<Vec<DeploymentAggregationOutput>, String> {
+        let client = get_clickhouse_client()?;
+        let view_name = format!("view_agg_deployment_{}", interval.table_suffix());
+
+        // Build WHERE clause
+        let mut conditions = Vec::new();
+        let from_dt = DateTime::parse_from_rfc3339(&time_range.from)
+            .map_err(|e| format!("Invalid 'from' timestamp format: {}", e))?
+            .with_timezone(&Utc);
+        let to_dt = DateTime::parse_from_rfc3339(&time_range.to)
+            .map_err(|e| format!("Invalid 'to' timestamp format: {}", e))?
+            .with_timezone(&Utc);
+        conditions.push(format!(
+            "time_bucket >= toDateTime({})",
+            from_dt.timestamp()
+        ));
         conditions.push(format!("time_bucket < toDateTime({})", to_dt.timestamp()));
 
         if let Some(f) = filter {
@@ -328,31 +550,34 @@ impl QueryRoot {
         }
 
         let where_clause = format!("WHERE {}", conditions.join(" AND "));
-        let query_limit = limit.unwrap_or(1000).max(0).min(10000);
+        let query_limit = limit.unwrap_or(1000).clamp(0, 10000); // Use clamp
 
         // Query directly selects pre-aggregated columns, no further aggregation or GROUP BY
         let query = format!(
             "SELECT time_bucket, subgraph, gateway_id, \
                     query_count, success_count, failure_count, \
-                    avg_response_time_ms, total_fees_usd \
+                    avg_response_time_ms, max_response_time_ms, p90_response_time_ms, p99_response_time_ms, stddev_response_time_ms, \
+                    total_fees_usd, avg_fee_usd, max_fee_usd, p90_fee_usd, p99_fee_usd, stddev_fee_usd, \
+                    success_proportion \
              FROM {} {} \
              ORDER BY time_bucket DESC, subgraph, gateway_id \
              LIMIT {}",
-            table_name, where_clause, query_limit
+            view_name, where_clause, query_limit
         );
 
         println!("Executing query: {}", query);
 
         let rows = client
             .query(&query)
-            .fetch_all::<DeploymentAggregationRow>() // Uses existing struct
+            .fetch_all::<DeploymentAggregationRow>() // Uses updated struct
             .await
             .map_err(|e| format!("Database query failed: {}", e))?;
 
-        // Map directly, row-by-row (mapping logic remains the same)
+        // Map directly, row-by-row, including new fields
         Ok(rows
             .into_iter()
             .map(|row| DeploymentAggregationOutput {
+                // Uses updated struct
                 time_bucket: Utc
                     .timestamp_opt(row.time_bucket as i64, 0)
                     .single()
@@ -362,8 +587,19 @@ impl QueryRoot {
                 query_count: row.query_count,
                 success_count: row.success_count,
                 failure_count: row.failure_count,
-                avg_response_time_ms: row.avg_response_time_ms,
-                total_fees_usd: row.total_fees_usd,
+                // Map all new fields, handling Option for NaN/Inf safety
+                avg_response_time_ms: Some(row.avg_response_time_ms),
+                max_response_time_ms: Some(row.max_response_time_ms),
+                p90_response_time_ms: Some(row.p90_response_time_ms),
+                p99_response_time_ms: Some(row.p99_response_time_ms),
+                stddev_response_time_ms: Some(row.stddev_response_time_ms),
+                total_fees_usd: Some(row.total_fees_usd),
+                avg_fee_usd: Some(row.avg_fee_usd),
+                max_fee_usd: Some(row.max_fee_usd),
+                p90_fee_usd: Some(row.p90_fee_usd),
+                p99_fee_usd: Some(row.p99_fee_usd),
+                stddev_fee_usd: Some(row.stddev_fee_usd),
+                success_proportion: Some(row.success_proportion),
             })
             .collect())
     }
@@ -371,17 +607,18 @@ impl QueryRoot {
     /// Query for Indexer level aggregations
     async fn indexer_aggregations(
         &self,
-        ctx: &Context<'_>,
+        _ctx: &Context<'_>, // Prefix ctx with underscore
         interval: AggregationInterval,
         time_range: TimeRangeInput,
         #[graphql(desc = "Optional filters for the query")] filter: Option<AggregationFilterInput>,
         #[graphql(desc = "Maximum number of records to return (default 1000, max 10000)")]
         limit: Option<i32>,
     ) -> Result<Vec<IndexerAggregationOutput>, String> {
+        // Return updated Output struct
         let client = get_clickhouse_client()?;
-        let table_name = format!("agg_indexer_{}", interval.table_suffix());
+        let view_name = format!("view_agg_indexer_{}", interval.table_suffix());
 
-        // Build WHERE clause
+        // Build WHERE clause (logic remains the same, lines 501-521)
         let mut conditions = Vec::new();
         let from_dt = DateTime::parse_from_rfc3339(&time_range.from)
             .map_err(|e| format!("Invalid 'from' timestamp format: {}", e))?
@@ -389,7 +626,10 @@ impl QueryRoot {
         let to_dt = DateTime::parse_from_rfc3339(&time_range.to)
             .map_err(|e| format!("Invalid 'to' timestamp format: {}", e))?
             .with_timezone(&Utc);
-        conditions.push(format!("time_bucket >= toDateTime({})", from_dt.timestamp()));
+        conditions.push(format!(
+            "time_bucket >= toDateTime({})",
+            from_dt.timestamp()
+        ));
         conditions.push(format!("time_bucket < toDateTime({})", to_dt.timestamp()));
 
         if let Some(f) = filter {
@@ -403,32 +643,38 @@ impl QueryRoot {
         }
 
         let where_clause = format!("WHERE {}", conditions.join(" AND "));
-        let query_limit = limit.unwrap_or(1000).max(0).min(10000);
+        let query_limit = limit.unwrap_or(1000).clamp(0, 10000); // Use clamp
 
-        // Query directly selects pre-aggregated columns, no further aggregation or GROUP BY
+        // Update SELECT list to include all new fields
         let query = format!(
             "SELECT time_bucket, indexer, gateway_id, \
                     query_count, success_count, failure_count, \
-                    avg_indexer_response_time_ms, total_fee_grt, \
-                    avg_seconds_behind, avg_blocks_behind \
+                    avg_indexer_response_time_ms, max_indexer_response_time_ms, \
+                    p90_indexer_response_time_ms, p99_indexer_response_time_ms, \
+                    stddev_indexer_response_time_ms, \
+                    total_fee_grt, avg_fee_grt, max_fee_grt, p90_fee_grt, p99_fee_grt, stddev_fee_grt, \
+                    avg_seconds_behind, max_seconds_behind, p90_seconds_behind, p99_seconds_behind, stddev_seconds_behind, \
+                    avg_blocks_behind, max_blocks_behind, p90_blocks_behind, p99_blocks_behind, stddev_blocks_behind, \
+                    success_proportion \
              FROM {} {} \
-             ORDER BY time_bucket DESC, indexer, gateway_id \
+             ORDER BY time_bucket DESC, indexer ASC, gateway_id ASC \
              LIMIT {}",
-            table_name, where_clause, query_limit
+            view_name, where_clause, query_limit
         );
 
         println!("Executing query: {}", query);
 
         let rows = client
             .query(&query)
-            .fetch_all::<IndexerAggregationRow>() // Uses existing struct
+            .fetch_all::<IndexerAggregationRow>() // Use updated Row struct
             .await
             .map_err(|e| format!("Database query failed: {}", e))?;
 
-        // Map directly, row-by-row (mapping logic remains the same)
+        // Map directly, row-by-row, including new fields
         Ok(rows
             .into_iter()
             .map(|row| IndexerAggregationOutput {
+                // Use updated Output struct
                 time_bucket: Utc
                     .timestamp_opt(row.time_bucket as i64, 0)
                     .single()
@@ -438,18 +684,37 @@ impl QueryRoot {
                 query_count: row.query_count,
                 success_count: row.success_count,
                 failure_count: row.failure_count,
-                avg_indexer_response_time_ms: row.avg_indexer_response_time_ms,
-                total_fee_grt: row.total_fee_grt,
-                avg_seconds_behind: row.avg_seconds_behind,
-                avg_blocks_behind: row.avg_blocks_behind,
+                // Map all new fields, handling Option for NaN/Inf safety
+                avg_indexer_response_time_ms: Some(row.avg_indexer_response_time_ms),
+                max_indexer_response_time_ms: Some(row.max_indexer_response_time_ms),
+                p90_indexer_response_time_ms: Some(row.p90_indexer_response_time_ms),
+                p99_indexer_response_time_ms: Some(row.p99_indexer_response_time_ms),
+                stddev_indexer_response_time_ms: Some(row.stddev_indexer_response_time_ms),
+                total_fee_grt: Some(row.total_fee_grt),
+                avg_fee_grt: Some(row.avg_fee_grt),
+                max_fee_grt: Some(row.max_fee_grt),
+                p90_fee_grt: Some(row.p90_fee_grt),
+                p99_fee_grt: Some(row.p99_fee_grt),
+                stddev_fee_grt: Some(row.stddev_fee_grt),
+                avg_seconds_behind: Some(row.avg_seconds_behind),
+                max_seconds_behind: Some(row.max_seconds_behind),
+                p90_seconds_behind: Some(row.p90_seconds_behind),
+                p99_seconds_behind: Some(row.p99_seconds_behind),
+                stddev_seconds_behind: Some(row.stddev_seconds_behind),
+                avg_blocks_behind: Some(row.avg_blocks_behind),
+                max_blocks_behind: Some(row.max_blocks_behind),
+                p90_blocks_behind: Some(row.p90_blocks_behind),
+                p99_blocks_behind: Some(row.p99_blocks_behind),
+                stddev_blocks_behind: Some(row.stddev_blocks_behind),
+                success_proportion: Some(row.success_proportion),
             })
             .collect())
     }
 
-     /// Query for Allocation level aggregations
+    /// Query for Allocation level aggregations (grouped by subgraph and indexer)
     async fn allocation_aggregations(
         &self,
-        ctx: &Context<'_>,
+        _ctx: &Context<'_>, // Prefix ctx with underscore
         interval: AggregationInterval,
         time_range: TimeRangeInput,
         #[graphql(desc = "Optional filters for the query")] filter: Option<AggregationFilterInput>,
@@ -457,7 +722,7 @@ impl QueryRoot {
         limit: Option<i32>,
     ) -> Result<Vec<AllocationAggregationOutput>, String> {
         let client = get_clickhouse_client()?;
-        let table_name = format!("agg_allocation_{}", interval.table_suffix());
+        let view_name = format!("view_agg_allocation_{}", interval.table_suffix());
 
         // Build WHERE clause
         let mut conditions = Vec::new();
@@ -467,14 +732,17 @@ impl QueryRoot {
         let to_dt = DateTime::parse_from_rfc3339(&time_range.to)
             .map_err(|e| format!("Invalid 'to' timestamp format: {}", e))?
             .with_timezone(&Utc);
-        conditions.push(format!("time_bucket >= toDateTime({})", from_dt.timestamp()));
+        conditions.push(format!(
+            "time_bucket >= toDateTime({})",
+            from_dt.timestamp()
+        ));
         conditions.push(format!("time_bucket < toDateTime({})", to_dt.timestamp()));
 
         if let Some(f) = filter {
             if let Some(gw) = &f.gateway_id {
                 conditions.push(format!("gateway_id = '{}'", gw));
             }
-             if let Some(sg) = &f.subgraph {
+            if let Some(sg) = &f.subgraph {
                 conditions.push(format!("subgraph = '{}'", sg));
             }
             if let Some(ix) = &f.indexer {
@@ -483,18 +751,23 @@ impl QueryRoot {
         }
 
         let where_clause = format!("WHERE {}", conditions.join(" AND "));
-        let query_limit = limit.unwrap_or(1000).max(0).min(10000);
+        let query_limit = limit.unwrap_or(1000).clamp(0, 10000); // Use clamp
 
         // Query directly selects pre-aggregated columns, no further aggregation or GROUP BY
         let query = format!(
             "SELECT time_bucket, subgraph, indexer, gateway_id, \
                     query_count, success_count, failure_count, \
-                    avg_indexer_response_time_ms, total_fee_grt, \
-                    avg_seconds_behind, avg_blocks_behind \
+                    avg_indexer_response_time_ms, max_indexer_response_time_ms, \
+                    p90_indexer_response_time_ms, p99_indexer_response_time_ms, \
+                    stddev_indexer_response_time_ms, \
+                    total_fee_grt, avg_fee_grt, max_fee_grt, p90_fee_grt, p99_fee_grt, stddev_fee_grt, \
+                    avg_seconds_behind, max_seconds_behind, p90_seconds_behind, p99_seconds_behind, stddev_seconds_behind, \
+                    avg_blocks_behind, max_blocks_behind, p90_blocks_behind, p99_blocks_behind, stddev_blocks_behind, \
+                    success_proportion \
              FROM {} {} \
-             ORDER BY time_bucket DESC, subgraph, indexer, gateway_id \
+             ORDER BY time_bucket DESC, subgraph ASC, indexer ASC, gateway_id ASC \
              LIMIT {}",
-            table_name, where_clause, query_limit
+            view_name, where_clause, query_limit
         );
 
         println!("Executing query: {}", query);
@@ -505,10 +778,11 @@ impl QueryRoot {
             .await
             .map_err(|e| format!("Database query failed: {}", e))?;
 
-        // Map directly, row-by-row (mapping logic remains the same)
+        // Map directly, row-by-row, including new fields
         Ok(rows
             .into_iter()
-            .map(|row| AllocationAggregationOutput { // Uses existing struct
+            .map(|row| AllocationAggregationOutput {
+                // Uses existing struct
                 time_bucket: Utc
                     .timestamp_opt(row.time_bucket as i64, 0)
                     .single()
@@ -519,10 +793,29 @@ impl QueryRoot {
                 query_count: row.query_count,
                 success_count: row.success_count,
                 failure_count: row.failure_count,
-                avg_indexer_response_time_ms: row.avg_indexer_response_time_ms,
-                total_fee_grt: row.total_fee_grt,
-                avg_seconds_behind: row.avg_seconds_behind,
-                avg_blocks_behind: row.avg_blocks_behind,
+                // Map all new fields (same mapping logic as Indexer)
+                avg_indexer_response_time_ms: Some(row.avg_indexer_response_time_ms),
+                max_indexer_response_time_ms: Some(row.max_indexer_response_time_ms),
+                p90_indexer_response_time_ms: Some(row.p90_indexer_response_time_ms),
+                p99_indexer_response_time_ms: Some(row.p99_indexer_response_time_ms),
+                stddev_indexer_response_time_ms: Some(row.stddev_indexer_response_time_ms),
+                total_fee_grt: Some(row.total_fee_grt),
+                avg_fee_grt: Some(row.avg_fee_grt),
+                max_fee_grt: Some(row.max_fee_grt),
+                p90_fee_grt: Some(row.p90_fee_grt),
+                p99_fee_grt: Some(row.p99_fee_grt),
+                stddev_fee_grt: Some(row.stddev_fee_grt),
+                avg_seconds_behind: Some(row.avg_seconds_behind),
+                max_seconds_behind: Some(row.max_seconds_behind),
+                p90_seconds_behind: Some(row.p90_seconds_behind),
+                p99_seconds_behind: Some(row.p99_seconds_behind),
+                stddev_seconds_behind: Some(row.stddev_seconds_behind),
+                avg_blocks_behind: Some(row.avg_blocks_behind),
+                max_blocks_behind: Some(row.max_blocks_behind),
+                p90_blocks_behind: Some(row.p90_blocks_behind),
+                p99_blocks_behind: Some(row.p99_blocks_behind),
+                stddev_blocks_behind: Some(row.stddev_blocks_behind),
+                success_proportion: Some(row.success_proportion),
             })
             .collect())
     }
@@ -532,10 +825,12 @@ impl QueryRoot {
 // Returns the configured client builder. Connection happens on first query.
 fn get_clickhouse_client() -> Result<Client, String> {
     Ok(Client::default()
-        .with_url(&env::var("CLICKHOUSE_URL").unwrap_or_else(|_| "http://localhost:8123".into()))
-        .with_database(&env::var("CLICKHOUSE_DB").unwrap_or_else(|_| "default".into()))
-        .with_user(&env::var("CLICKHOUSE_USER").unwrap_or_else(|_| "graphql".into()))
-        .with_password(&env::var("CLICKHOUSE_PASSWORD").unwrap_or_else(|_| "graphql_password".into())))
+        .with_url(env::var("CLICKHOUSE_URL").unwrap_or_else(|_| "http://localhost:8123".into()))
+        .with_database(env::var("CLICKHOUSE_DB").unwrap_or_else(|_| "default".into()))
+        .with_user(env::var("CLICKHOUSE_USER").unwrap_or_else(|_| "graphql".into()))
+        .with_password(
+            env::var("CLICKHOUSE_PASSWORD").unwrap_or_else(|_| "graphql_password".into()),
+        ))
     // Remove .try_into() and .map_err()
 }
 
@@ -561,13 +856,17 @@ async fn health_check() -> HttpResponse {
     let client_result = get_clickhouse_client();
     if client_result.is_err() {
         // Log the actual error if needed
-        eprintln!("Health check failed (client config): {:?}", client_result.err());
+        eprintln!(
+            "Health check failed (client config): {:?}",
+            client_result.err()
+        );
         return HttpResponse::InternalServerError().body("ClickHouse client configuration error");
     }
     let client = client_result.unwrap(); // Safe unwrap after check above
 
     // More advanced check: Can we execute a simple query?
-    match client.query("SELECT 1").execute().await { // Use execute() for simple queries
+    match client.query("SELECT 1").execute().await {
+        // Use execute() for simple queries
         Ok(_) => HttpResponse::Ok().body("OK"),
         Err(e) => {
             eprintln!("Health check failed (query execution): {}", e); // Log the error
