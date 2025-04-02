@@ -1746,6 +1746,7 @@ dependencies = [
  "async-graphql",
  "async-graphql-actix-web",
  "bs58",
+ "chrono",
  "clickhouse",
  "futures",
  "hex",
@@ -1760,6 +1761,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "hex",
+ "once_cell",
  "prost",
  "prost-build",
  "rand 0.8.5",

@@ -8,6 +8,8 @@ use rdkafka::config::ClientConfig;
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::util::get_rdkafka_version;
 use tokio::time;
+use once_cell::sync::Lazy;
+use rand::seq::SliceRandom;
 
 // Mock types to match the gateway's dependencies
 mod mock {
@@ -220,60 +222,155 @@ fn random_hex_string(len: usize) -> String {
     hex::encode(random_bytes(len))
 }
 
+// --- Define Pool Sizes ---
+const POOL_SIZE: usize = 30; // Number of unique IDs for each type
+
+// --- Define Static ID Pools (Place this before the random_* functions) ---
+
+static INDEXER_ID_POOL: Lazy<Vec<IndexerId>> = Lazy::new(|| {
+    (0..POOL_SIZE)
+        .map(|_| {
+            let mut bytes = [0u8; 20];
+            rand::thread_rng().fill(&mut bytes);
+            IndexerId(bytes)
+        })
+        .collect()
+});
+
+static DEPLOYMENT_ID_POOL: Lazy<Vec<DeploymentId>> = Lazy::new(|| {
+    (0..POOL_SIZE)
+        .map(|_| {
+            let mut bytes = [0u8; 32];
+            rand::thread_rng().fill(&mut bytes);
+            DeploymentId(bytes)
+        })
+        .collect()
+});
+
+// Pool for Addresses (used by random_address and tap_signer)
+static ADDRESS_POOL: Lazy<Vec<Address>> = Lazy::new(|| {
+    (0..POOL_SIZE)
+        .map(|_| {
+            let mut bytes = [0u8; 20];
+            rand::thread_rng().fill(&mut bytes);
+            Address(bytes)
+        })
+        .collect()
+});
+
+// Pool for Subgraph IDs (derived from Deployment pool for consistency)
+static SUBGRAPH_ID_POOL: Lazy<Vec<SubgraphId>> = Lazy::new(|| {
+    DEPLOYMENT_ID_POOL
+        .iter()
+        .map(|d| SubgraphId(format!("Qm{}", hex::encode(d.0))))
+        .collect()
+});
+
+// Pools for String-based IDs
+static GATEWAY_ID_POOL: Lazy<Vec<String>> = Lazy::new(|| {
+    (0..POOL_SIZE)
+        .map(|i| format!("gateway-pool-{}", i))
+        .collect()
+});
+
+static API_KEY_POOL: Lazy<Vec<String>> = Lazy::new(|| {
+    (0..POOL_SIZE)
+        .map(|i| random_utf8_string(&format!("api-key-pool-{}", i), 10))
+        .collect()
+});
+
+static USER_POOL: Lazy<Vec<String>> = Lazy::new(|| {
+    (0..POOL_SIZE)
+        .map(|i| random_utf8_string(&format!("user-pool-{}", i), 10))
+        .collect()
+});
+
+// --- Update the random ID generation functions ---
+
+// Replace the existing random_address function (lines 223-227)
 fn random_address() -> Address {
-    let mut bytes = [0u8; 20];
-    rand::thread_rng().fill(&mut bytes);
-    Address(bytes)
+    // Choose a random Address from the pre-generated pool
+    *ADDRESS_POOL.choose(&mut rand::thread_rng()).unwrap()
 }
 
+// Replace the existing random_deployment_id function (lines 229-233)
 fn random_deployment_id() -> DeploymentId {
-    let mut bytes = [0u8; 32];
-    rand::thread_rng().fill(&mut bytes);
-    DeploymentId(bytes)
+    // Choose a random DeploymentId from the pre-generated pool
+    *DEPLOYMENT_ID_POOL.choose(&mut rand::thread_rng()).unwrap()
 }
 
+// Replace the existing random_indexer_id function (lines 235-239)
 fn random_indexer_id() -> IndexerId {
-    let mut bytes = [0u8; 20];
-    rand::thread_rng().fill(&mut bytes);
-    IndexerId(bytes)
+    // Choose a random IndexerId from the pre-generated pool
+    *INDEXER_ID_POOL.choose(&mut rand::thread_rng()).unwrap()
 }
+
+// --- Add/Update functions for String-based IDs ---
+
+// Add this function to select from the Subgraph ID pool
+fn random_subgraph_id() -> SubgraphId {
+     SUBGRAPH_ID_POOL.choose(&mut rand::thread_rng()).unwrap().clone()
+}
+
+// Add this function to select from the Gateway ID pool
+fn random_gateway_id() -> String {
+     GATEWAY_ID_POOL.choose(&mut rand::thread_rng()).unwrap().clone()
+}
+
+// Add this function to select from the API Key pool
+fn random_api_key() -> String {
+     API_KEY_POOL.choose(&mut rand::thread_rng()).unwrap().clone()
+}
+
+// Add this function to select from the User pool
+fn random_user() -> String {
+     USER_POOL.choose(&mut rand::thread_rng()).unwrap().clone()
+}
+
+// --- Update generate_random_client_request (lines 241-314) ---
+// Modify calls inside this function to use the new pool-based random functions
 
 fn generate_random_client_request() -> ClientRequest {
     let mut rng = rand::thread_rng();
 
-    // Generate between 1 and 4 indexer requests
     let num_indexers = rng.gen_range(1..5);
     let mut indexer_requests = Vec::with_capacity(num_indexers);
 
-    for _ in 0..num_indexers {
-        let success = rng.gen_bool(0.9); // 90% success rate
+    // --- Key Change: Pick IDs *once* per ClientRequest where appropriate ---
+    let deployment_id = random_deployment_id(); // Pick one deployment from pool
+    let subgraph_id = random_subgraph_id(); // Pick one subgraph from pool (could also derive from deployment)
+    let api_key = random_api_key(); // Pick one api key from pool
+    let user = random_user(); // Pick one user from pool
 
+    let subgraph_chain = if rng.gen_bool(0.8) { "mainnet".to_string() } else { "goerli".to_string() };
+
+    for _ in 0..num_indexers {
+        let success = rng.gen_bool(0.9);
+
+        // --- Use pool-based functions for indexer-specific IDs ---
         let indexer_id = random_indexer_id();
-        let allocation = random_address();
+        let allocation_id = random_address(); // Allocation can vary per indexer request
 
         let result = if success {
             Ok(IndexerResponse { errors: vec![] })
         } else {
-            // Use safe error types with valid UTF-8
             Err(IndexerError::NetworkError(
                 "Error processing request".to_string(),
             ))
         };
 
         indexer_requests.push(IndexerRequest {
-            indexer: indexer_id,
-            deployment: random_deployment_id(),
-            // Ensure URL is valid UTF-8
-            url: format!(
-                "https://api.thegraph.com/subgraphs/id/Qm{}",
-                random_hex_string(10)
+            indexer: indexer_id, // From pool
+            deployment: deployment_id, // Use the *same* deployment for all indexers in this request
+            url: format!( // Use consistent subgraph ID for URL
+                "https://api.thegraph.com/subgraphs/id/{}",
+                 subgraph_id.0 // Access the inner String
             ),
             receipt: Receipt::new(
-                allocation,
+                allocation_id, // From pool
                 rng.gen_range(100_000_000_000_000..1_000_000_000_000_000),
             ),
-            // Ensure chain name is valid UTF-8
-            subgraph_chain: "mainnet".to_string(),
+            subgraph_chain: subgraph_chain.clone(),
             result,
             response_time_ms: rng.gen_range(50..2000) as u16,
             seconds_behind: rng.gen_range(0..100),
@@ -281,28 +378,20 @@ fn generate_random_client_request() -> ClientRequest {
         });
     }
 
-    let success = rng.gen_bool(0.95); // 95% success rate for overall query
+    let success = rng.gen_bool(0.95);
 
     ClientRequest {
-        // Use random hex for IDs (guaranteed valid UTF-8)
-        id: random_hex_string(16),
+        id: random_hex_string(16), // Keep request ID unique
         response_time_ms: rng.gen_range(50..5000) as u16,
         result: if success {
             Ok(())
         } else {
-            // Use predefined error message to ensure UTF-8
             Err(Error::QueryFailed("Query validation error".to_string()))
         },
-        // Use random alphanumeric strings with prefixes
-        api_key: random_utf8_string("api", 16),
-        user: random_utf8_string("user", 16),
-        subgraph: if rng.gen_bool(0.9) {
-            // Guarantee valid UTF-8 for subgraph ID
-            Some(SubgraphId(format!("Qm{}", random_hex_string(10))))
-        } else {
-            None
-        },
-        grt_per_usd: rng.gen_range(0.05..0.2), // Realistic GRT/USD price range
+        api_key: api_key, // Use the chosen API key
+        user: user,       // Use the chosen user
+        subgraph: if rng.gen_bool(0.9) { Some(subgraph_id) } else { None }, // Use the chosen subgraph ID
+        grt_per_usd: rng.gen_range(0.05..0.2),
         indexer_requests,
         request_bytes: rng.gen_range(100..5000),
         response_bytes: if rng.gen_bool(0.95) {
@@ -316,9 +405,13 @@ fn generate_random_client_request() -> ClientRequest {
 // Function that matches the logic in gateway's report function but without attestation
 fn encode_client_request(
     client_request: ClientRequest,
-    tap_signer: Address,
-    graph_env: String,
+    // tap_signer: Address, // Remove this parameter
+    // graph_env: String, // Remove this parameter
 ) -> Vec<u8> {
+    // --- Key Change: Select gateway and signer from pools here ---
+    let gateway_id = random_gateway_id(); // Select from pool
+    let tap_signer = random_address(); // Select from pool
+
     let indexer_queries = client_request
         .indexer_requests
         .iter()
@@ -359,7 +452,7 @@ fn encode_client_request(
     let total_fees_usd: f64 = total_fees_grt / client_request.grt_per_usd;
 
     let client_query_msg = ClientQueryProtobuf {
-        gateway_id: graph_env,
+        gateway_id,
         receipt_signer: tap_signer.to_vec(),
         query_id: client_request.id,
         api_key: client_request.api_key,
@@ -422,19 +515,14 @@ async fn main() {
 
     // Make sure this matches the topic name in ClickHouse Kafka engine
     let topic = "gateway_qos_topic";
-    let mut counter = 0;
-
-    // Create a fixed tap_signer and graph_env to use for all messages
-    let tap_signer = random_address();
-    // Ensure graph_env is valid UTF-8
-    let graph_env = "testnet-gateway".to_string();
+    let mut counter: u64 = 0;
 
     loop {
         // Generate a random client request
         let client_request = generate_random_client_request();
 
         // Encode using the gateway's exact logic
-        let encoded_message = encode_client_request(client_request, tap_signer, graph_env.clone());
+        let encoded_message = encode_client_request(client_request);
 
         println!("Encoded message: {} ", hex::encode(&encoded_message));
         println!("Encoded message size: {} bytes", encoded_message.len());
