@@ -35,60 +35,8 @@ SETTINGS
     kafka_max_block_size = 1,
     kafka_poll_timeout_ms = 500;
 
--- Create the destination table for the raw data (with TTL)
--- Note: This table seems less critical now with the qos_data_mv directly populating qos_data,
--- but we keep it for potential raw data inspection if needed.
-CREATE TABLE IF NOT EXISTS raw_qos_data
-(
-    event_time DateTime,
-    gateway_id String,
-    receipt_signer String, -- Raw bytes
-    query_id String,
-    api_key String,
-    user_id String,
-    subgraph Nullable(String),
-    result String,
-    response_time_ms UInt32,
-    request_bytes UInt32,
-    response_bytes Nullable(UInt32),
-    total_fees_usd Float64,
-    indexer_queries Nested(
-        indexer String, -- Raw bytes
-        deployment String, -- Raw bytes
-        allocation String, -- Raw bytes
-        indexed_chain String,
-        url String,
-        fee_grt Float64,
-        response_time_ms UInt32,
-        seconds_behind UInt32,
-        result String,
-        indexer_errors String,
-        blocks_behind UInt64
-    )
-) ENGINE = MergeTree()
-ORDER BY (event_time, gateway_id)
-PARTITION BY toYYYYMMDD(event_time)
-TTL event_time + INTERVAL 7 DAY; -- Keep raw data for 7 days
-
--- Materialized view to populate raw_qos_data (optional, could be removed if qos_data is sufficient)
-CREATE MATERIALIZED VIEW IF NOT EXISTS mv_raw_qos_data TO raw_qos_data AS
-SELECT
-    now() as event_time,
-    gateway_id,
-    receipt_signer, -- Store raw bytes here
-    query_id,
-    api_key,
-    user_id,
-    subgraph,
-    result,
-    response_time_ms,
-    request_bytes,
-    response_bytes,
-    total_fees_usd,
-    indexer_queries -- Store raw nested bytes here
-FROM kafka_qos_data;
-
--- Create the table for processed QoS data (with HEX encoding)
+-- Create the primary data table (qos_data)
+-- This table stores the processed data from Kafka, ready for aggregation
 CREATE TABLE IF NOT EXISTS qos_data
 (
     event_time DateTime,
@@ -104,18 +52,25 @@ CREATE TABLE IF NOT EXISTS qos_data
     response_bytes Nullable(UInt32),
     total_fees_usd Float64,
     indexer_queries Nested (
-        indexer String,
-        result String, -- 'success' or other status
-        response_time_ms UInt32,
+        indexer String, -- HEX encoded
+        deployment String, -- HEX encoded
+        allocation String, -- HEX encoded
+        indexed_chain String,
+        url String,
         fee_grt Float64,
+        response_time_ms UInt32,
         seconds_behind UInt32,
+        result String,
+        indexer_errors String,
         blocks_behind UInt64
     )
 ) ENGINE = MergeTree
-PARTITION BY toYYYYMM(event_time)
-ORDER BY (gateway_id, event_time);
+PARTITION BY toYYYYMM(event_time) -- Keep monthly partitioning
+ORDER BY (gateway_id, event_time)
+TTL event_time + INTERVAL 7 DAY; -- Add TTL: Delete rows older than 7 days
 
 -- Create the materialized view that processes and transforms the data into qos_data
+-- Ensure ALL necessary fields are selected and HEX encoding is applied correctly
 CREATE MATERIALIZED VIEW IF NOT EXISTS qos_data_mv TO qos_data AS
 SELECT
     now() as event_time,
@@ -130,7 +85,7 @@ SELECT
     request_bytes,
     response_bytes,
     total_fees_usd,
-    -- Apply HEX encoding to nested fields
+    -- Select ALL nested fields needed downstream, applying HEX where required
     arrayMap(x -> HEX(x), indexer_queries.indexer) AS `indexer_queries.indexer`,
     arrayMap(x -> HEX(x), indexer_queries.deployment) AS `indexer_queries.deployment`,
     arrayMap(x -> HEX(x), indexer_queries.allocation) AS `indexer_queries.allocation`,
