@@ -7,6 +7,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use clickhouse::{Client, Row};
 use serde::Deserialize;
 use std::env;
+use tokio::signal::unix::{signal, SignalKind};
 // use bs58;
 // use hex;
 
@@ -877,21 +878,71 @@ async fn health_check() -> HttpResponse {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    // Initialize logging (optional but recommended)
+    // You can use a simple logger like env_logger or tracing
+    // env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
+    // Or using tracing if you prefer (ensure tracing/tracing-subscriber are deps)
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
+
     // Initialize environment variables (e.g., from .env file if needed)
     // dotenv::dotenv().ok();
 
     let schema = Schema::build(QueryRoot, EmptyMutation, EmptySubscription).finish();
 
-    println!("GraphQL playground: http://localhost:8000");
+    tracing::info!("Starting GraphQL API server..."); // Use tracing/log
 
-    HttpServer::new(move || {
+    // --- Server Initialization ---
+    // Create the server instance but don't await .run() immediately
+    let server = HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(schema.clone()))
             .route("/graphql", web::post().to(graphql_handler))
             .route("/", web::get().to(graphql_playground))
-            .route("/health", web::get().to(health_check))
+            .route("/health", web::get().to(health_check)) // Keep health check
     })
     .bind("0.0.0.0:8000")?
-    .run()
-    .await
+    .run(); // .run() returns a Server instance
+            // --- End Server Initialization ---
+
+    // --- Graceful Shutdown Logic ---
+    // Get a handle to the server instance
+    let server_handle = server.handle();
+
+    // Spawn a separate task to listen for termination signals
+    tokio::spawn(async move {
+        let mut sigint = signal(SignalKind::interrupt()).expect("Failed to install SIGINT handler");
+        let mut sigterm =
+            signal(SignalKind::terminate()).expect("Failed to install SIGTERM handler");
+
+        // Wait for either SIGINT or SIGTERM
+        tokio::select! {
+            _ = sigint.recv() => {
+                tracing::info!("SIGINT received, initiating graceful shutdown...");
+            },
+            _ = sigterm.recv() => {
+                tracing::info!("SIGTERM received, initiating graceful shutdown...");
+            },
+        };
+
+        // Initiate graceful shutdown using the server handle.
+        // stop(true) sends the stop signal gracefully.
+        // We await it to ensure the signal is processed.
+        server_handle.stop(true).await;
+        tracing::info!("Shutdown signal sent to Actix server.");
+    });
+    // --- End Graceful Shutdown Logic ---
+
+    tracing::info!("GraphQL server running at http://0.0.0.0:8000");
+    tracing::info!("GraphQL playground available at http://localhost:8000"); // Updated log
+
+    // Wait for the server to stop.
+    // This will block until the server is shut down, either normally
+    // or via the signal handler calling server_handle.stop().
+    server.await?;
+
+    tracing::info!("GraphQL server has stopped gracefully.");
+
+    Ok(())
 }
