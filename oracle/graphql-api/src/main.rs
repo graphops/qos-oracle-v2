@@ -298,6 +298,204 @@ struct AggregationFilterInput {
     allocation: Option<String>,
 }
 
+// --- Enums and Structs for Sorting ---
+
+#[derive(Enum, Copy, Clone, Eq, PartialEq, Debug)]
+enum SortDirection {
+    Asc,
+    Desc,
+}
+
+// Define which fields can be sorted for Deployments
+#[derive(Enum, Copy, Clone, Eq, PartialEq, Debug)]
+enum DeploymentSortField {
+    TimeBucket,
+    Subgraph,
+    GatewayId,
+    QueryCount,
+    SuccessCount,
+    FailureCount,
+    AvgResponseTimeMs,
+    MaxResponseTimeMs,
+    P90ResponseTimeMs,
+    P99ResponseTimeMs,
+    TotalFeesUsd,
+    AvgFeeUsd,
+    MaxFeeUsd,
+    P90FeeUsd,
+    P99FeeUsd,
+    SuccessProportion,
+}
+
+impl DeploymentSortField {
+    // Helper to get the corresponding ClickHouse column name
+    fn column_name(&self) -> &'static str {
+        match self {
+            DeploymentSortField::TimeBucket => "time_bucket",
+            DeploymentSortField::Subgraph => "subgraph",
+            DeploymentSortField::GatewayId => "gateway_id",
+            DeploymentSortField::QueryCount => "query_count",
+            DeploymentSortField::SuccessCount => "success_count",
+            DeploymentSortField::FailureCount => "failure_count",
+            DeploymentSortField::AvgResponseTimeMs => "avg_response_time_ms",
+            DeploymentSortField::MaxResponseTimeMs => "max_response_time_ms",
+            DeploymentSortField::P90ResponseTimeMs => "p90_response_time_ms",
+            DeploymentSortField::P99ResponseTimeMs => "p99_response_time_ms",
+            DeploymentSortField::TotalFeesUsd => "total_fees_usd",
+            DeploymentSortField::AvgFeeUsd => "avg_fee_usd",
+            DeploymentSortField::MaxFeeUsd => "max_fee_usd",
+            DeploymentSortField::P90FeeUsd => "p90_fee_usd",
+            DeploymentSortField::P99FeeUsd => "p99_fee_usd",
+            DeploymentSortField::SuccessProportion => "success_proportion",
+        }
+    }
+}
+
+// Define which fields can be sorted for Indexers
+#[derive(Enum, Copy, Clone, Eq, PartialEq, Debug)]
+enum IndexerSortField {
+    TimeBucket,
+    Indexer,
+    GatewayId,
+    QueryCount,
+    SuccessCount,
+    FailureCount,
+    AvgIndexerResponseTimeMs,
+    MaxIndexerResponseTimeMs,
+    P90IndexerResponseTimeMs,
+    P99IndexerResponseTimeMs,
+    TotalFeeGrt,
+    AvgFeeGrt,
+    MaxFeeGrt,
+    P90FeeGrt,
+    P99FeeGrt,
+    AvgSecondsBehind,
+    MaxSecondsBehind,
+    P90SecondsBehind,
+    P99SecondsBehind,
+    AvgBlocksBehind,
+    MaxBlocksBehind,
+    P90BlocksBehind,
+    P99BlocksBehind,
+    SuccessProportion,
+}
+
+impl IndexerSortField {
+    // Helper to get the corresponding ClickHouse column name
+    fn column_name(&self) -> &'static str {
+        match self {
+            IndexerSortField::TimeBucket => "time_bucket",
+            IndexerSortField::Indexer => "indexer",
+            IndexerSortField::GatewayId => "gateway_id",
+            IndexerSortField::QueryCount => "query_count",
+            IndexerSortField::SuccessCount => "success_count",
+            IndexerSortField::FailureCount => "failure_count",
+            IndexerSortField::AvgIndexerResponseTimeMs => "avg_indexer_response_time_ms",
+            IndexerSortField::MaxIndexerResponseTimeMs => "max_indexer_response_time_ms",
+            IndexerSortField::P90IndexerResponseTimeMs => "p90_indexer_response_time_ms",
+            IndexerSortField::P99IndexerResponseTimeMs => "p99_indexer_response_time_ms",
+            IndexerSortField::TotalFeeGrt => "total_fee_grt",
+            IndexerSortField::AvgFeeGrt => "avg_fee_grt",
+            IndexerSortField::MaxFeeGrt => "max_fee_grt",
+            IndexerSortField::P90FeeGrt => "p90_fee_grt",
+            IndexerSortField::P99FeeGrt => "p99_fee_grt",
+            IndexerSortField::AvgSecondsBehind => "avg_seconds_behind",
+            IndexerSortField::MaxSecondsBehind => "max_seconds_behind",
+            IndexerSortField::P90SecondsBehind => "p90_seconds_behind",
+            IndexerSortField::P99SecondsBehind => "p99_seconds_behind",
+            IndexerSortField::AvgBlocksBehind => "avg_blocks_behind",
+            IndexerSortField::MaxBlocksBehind => "max_blocks_behind",
+            IndexerSortField::P90BlocksBehind => "p90_blocks_behind",
+            IndexerSortField::P99BlocksBehind => "p99_blocks_behind",
+            IndexerSortField::SuccessProportion => "success_proportion",
+        }
+    }
+}
+
+// Define which fields can be sorted for Allocations
+#[derive(Enum, Copy, Clone, Eq, PartialEq, Debug)]
+enum AllocationSortField {
+    TimeBucket,
+    Subgraph,
+    Indexer,
+    GatewayId,
+    QueryCount,
+    SuccessCount,
+    FailureCount,
+    AvgIndexerResponseTimeMs,
+    MaxIndexerResponseTimeMs,
+    P90IndexerResponseTimeMs,
+    P99IndexerResponseTimeMs,
+    TotalFeeGrt,
+    AvgFeeGrt,
+    MaxFeeGrt,
+    P90FeeGrt,
+    P99FeeGrt,
+    AvgSecondsBehind,
+    MaxSecondsBehind,
+    P90SecondsBehind,
+    P99SecondsBehind,
+    AvgBlocksBehind,
+    MaxBlocksBehind,
+    P90BlocksBehind,
+    P99BlocksBehind,
+    SuccessProportion,
+}
+
+impl AllocationSortField {
+    // Helper to get the corresponding ClickHouse column name
+    fn column_name(&self) -> &'static str {
+        match self {
+            AllocationSortField::TimeBucket => "time_bucket",
+            AllocationSortField::Subgraph => "subgraph",
+            AllocationSortField::Indexer => "indexer",
+            AllocationSortField::GatewayId => "gateway_id",
+            AllocationSortField::QueryCount => "query_count",
+            AllocationSortField::SuccessCount => "success_count",
+            AllocationSortField::FailureCount => "failure_count",
+            AllocationSortField::AvgIndexerResponseTimeMs => "avg_indexer_response_time_ms",
+            AllocationSortField::MaxIndexerResponseTimeMs => "max_indexer_response_time_ms",
+            AllocationSortField::P90IndexerResponseTimeMs => "p90_indexer_response_time_ms",
+            AllocationSortField::P99IndexerResponseTimeMs => "p99_indexer_response_time_ms",
+            AllocationSortField::TotalFeeGrt => "total_fee_grt",
+            AllocationSortField::AvgFeeGrt => "avg_fee_grt",
+            AllocationSortField::MaxFeeGrt => "max_fee_grt",
+            AllocationSortField::P90FeeGrt => "p90_fee_grt",
+            AllocationSortField::P99FeeGrt => "p99_fee_grt",
+            AllocationSortField::AvgSecondsBehind => "avg_seconds_behind",
+            AllocationSortField::MaxSecondsBehind => "max_seconds_behind",
+            AllocationSortField::P90SecondsBehind => "p90_seconds_behind",
+            AllocationSortField::P99SecondsBehind => "p99_seconds_behind",
+            AllocationSortField::AvgBlocksBehind => "avg_blocks_behind",
+            AllocationSortField::MaxBlocksBehind => "max_blocks_behind",
+            AllocationSortField::P90BlocksBehind => "p90_blocks_behind",
+            AllocationSortField::P99BlocksBehind => "p99_blocks_behind",
+            AllocationSortField::SuccessProportion => "success_proportion",
+        }
+    }
+}
+
+// Input object for specifying sorting - Generic enough for all types?
+// Let's make specific ones for type safety in the resolver signature.
+
+#[derive(InputObject, Debug)]
+struct DeploymentSortInput {
+    field: DeploymentSortField,
+    direction: Option<SortDirection>, // Default to Desc
+}
+
+#[derive(InputObject, Debug)]
+struct IndexerSortInput {
+    field: IndexerSortField,
+    direction: Option<SortDirection>, // Default to Desc
+}
+
+#[derive(InputObject, Debug)]
+struct AllocationSortInput {
+    field: AllocationSortField,
+    direction: Option<SortDirection>, // Default to Desc
+}
+
 // --- GraphQL Query Root ---
 
 struct QueryRoot;
@@ -307,24 +505,38 @@ impl QueryRoot {
     /// Query for Deployment level aggregations
     async fn deployment_aggregations(
         &self,
-        _ctx: &Context<'_>, // Prefix ctx with underscore
-        interval: AggregationInterval,
-        time_range: TimeRangeInput,
+        _ctx: &Context<'_>,
+        #[graphql(desc = "Aggregation interval (default: Hourly)")] interval: Option<AggregationInterval>,
+        #[graphql(desc = "Time range (RFC3339 format, default: last 24 hours)")] time_range: Option<TimeRangeInput>,
         #[graphql(desc = "Optional filters for the query")] filter: Option<AggregationFilterInput>,
-        #[graphql(desc = "Maximum number of records to return (default 1000, max 10000)")]
-        limit: Option<i32>,
+        #[graphql(desc = "Maximum number of records to return (default 1000, max 10000)")] limit: Option<i32>,
+        #[graphql(desc = "Optional sorting (default: time_bucket DESC)")] sort: Option<DeploymentSortInput>,
     ) -> Result<Vec<DeploymentAggregationOutput>, String> {
         let client = get_clickhouse_client()?;
-        let view_name = format!("view_agg_deployment_{}", interval.table_suffix());
+
+        // --- Handle Defaults ---
+        let actual_interval = interval.unwrap_or(AggregationInterval::Hourly); // Default interval
+        let (from_dt, to_dt) = match time_range {
+            Some(tr) => (
+                DateTime::parse_from_rfc3339(&tr.from)
+                    .map_err(|e| format!("Invalid 'from' timestamp format: {}", e))?
+                    .with_timezone(&Utc),
+                DateTime::parse_from_rfc3339(&tr.to)
+                    .map_err(|e| format!("Invalid 'to' timestamp format: {}", e))?
+                    .with_timezone(&Utc),
+            ),
+            None => {
+                // Default to last 24 hours
+                let now = Utc::now();
+                (now - chrono::Duration::hours(24), now)
+            }
+        };
+        // --- End Handle Defaults ---
+
+        let view_name = format!("view_agg_deployment_{}", actual_interval.table_suffix());
 
         // Build WHERE clause
         let mut conditions = Vec::new();
-        let from_dt = DateTime::parse_from_rfc3339(&time_range.from)
-            .map_err(|e| format!("Invalid 'from' timestamp format: {}", e))?
-            .with_timezone(&Utc);
-        let to_dt = DateTime::parse_from_rfc3339(&time_range.to)
-            .map_err(|e| format!("Invalid 'to' timestamp format: {}", e))?
-            .with_timezone(&Utc);
         conditions.push(format!(
             "time_bucket >= toDateTime({})",
             from_dt.timestamp()
@@ -333,18 +545,36 @@ impl QueryRoot {
 
         if let Some(f) = filter {
             if let Some(gw) = &f.gateway_id {
-                conditions.push(format!("gateway_id = '{}'", gw));
+                // Basic validation/sanitization could be added here if needed
+                conditions.push(format!("gateway_id = '{}'", gw.replace('\'', "''"))); // Simple quote escape
             }
             if let Some(sg) = &f.subgraph {
-                conditions.push(format!("subgraph = '{}'", sg));
+                conditions.push(format!("subgraph = '{}'", sg.replace('\'', "''"))); // Simple quote escape
             }
             // No indexer/allocation filters applicable here
         }
 
         let where_clause = format!("WHERE {}", conditions.join(" AND "));
-        let query_limit = limit.unwrap_or(1000).clamp(0, 10000); // Use clamp
+        let query_limit = limit.unwrap_or(1000).clamp(1, 10000); // Ensure limit is at least 1
 
-        // Query directly selects pre-aggregated columns, no further aggregation or GROUP BY
+        // --- Build ORDER BY Clause ---
+        let order_by_clause = match sort {
+            Some(s) => {
+                let direction = match s.direction.unwrap_or(SortDirection::Desc) { // Default direction
+                    SortDirection::Asc => "ASC",
+                    SortDirection::Desc => "DESC",
+                };
+                // Map the enum field to the actual column name
+                format!("ORDER BY {} {}", s.field.column_name(), direction)
+            }
+            None => {
+                // Default sort order
+                "ORDER BY time_bucket DESC, subgraph ASC, gateway_id ASC".to_string()
+            }
+        };
+        // --- End Build ORDER BY Clause ---
+
+        // Query directly selects pre-aggregated columns
         let query = format!(
             "SELECT time_bucket, subgraph, gateway_id, \
                     query_count, success_count, failure_count, \
@@ -352,24 +582,23 @@ impl QueryRoot {
                     total_fees_usd, avg_fee_usd, max_fee_usd, p90_fee_usd, p99_fee_usd, stddev_fee_usd, \
                     success_proportion \
              FROM {} {} \
-             ORDER BY time_bucket DESC, subgraph, gateway_id \
+             {} \
              LIMIT {}",
-            view_name, where_clause, query_limit
+            view_name, where_clause, order_by_clause, query_limit // Use dynamic order_by_clause
         );
 
-        println!("Executing query: {}", query);
+        println!("Executing query: {}", query); // Keep for debugging if needed
 
         let rows = client
             .query(&query)
-            .fetch_all::<DeploymentAggregationRow>() // Uses updated struct
+            .fetch_all::<DeploymentAggregationRow>()
             .await
             .map_err(|e| format!("Database query failed: {}", e))?;
 
-        // Map directly, row-by-row, including new fields
+        // Map results (logic remains the same)
         Ok(rows
             .into_iter()
             .map(|row| DeploymentAggregationOutput {
-                // Uses updated struct
                 time_bucket: Utc
                     .timestamp_opt(row.time_bucket as i64, 0)
                     .single()
@@ -379,19 +608,20 @@ impl QueryRoot {
                 query_count: row.query_count,
                 success_count: row.success_count,
                 failure_count: row.failure_count,
-                // Map all new fields, handling Option for NaN/Inf safety
-                avg_response_time_ms: Some(row.avg_response_time_ms),
-                max_response_time_ms: Some(row.max_response_time_ms),
-                p90_response_time_ms: Some(row.p90_response_time_ms),
-                p99_response_time_ms: Some(row.p99_response_time_ms),
-                stddev_response_time_ms: Some(row.stddev_response_time_ms),
-                total_fees_usd: Some(row.total_fees_usd),
-                avg_fee_usd: Some(row.avg_fee_usd),
-                max_fee_usd: Some(row.max_fee_usd),
-                p90_fee_usd: Some(row.p90_fee_usd),
-                p99_fee_usd: Some(row.p99_fee_usd),
-                stddev_fee_usd: Some(row.stddev_fee_usd),
-                success_proportion: Some(row.success_proportion),
+                // Wrap numeric fields in Option, handle potential NaN/Inf from ClickHouse Float64 if necessary
+                // Although our views calculate these, being defensive is good.
+                avg_response_time_ms: if row.avg_response_time_ms.is_finite() { Some(row.avg_response_time_ms) } else { None },
+                max_response_time_ms: Some(row.max_response_time_ms), // u32 cannot be NaN/Inf
+                p90_response_time_ms: if row.p90_response_time_ms.is_finite() { Some(row.p90_response_time_ms) } else { None },
+                p99_response_time_ms: if row.p99_response_time_ms.is_finite() { Some(row.p99_response_time_ms) } else { None },
+                stddev_response_time_ms: if row.stddev_response_time_ms.is_finite() { Some(row.stddev_response_time_ms) } else { None },
+                total_fees_usd: if row.total_fees_usd.is_finite() { Some(row.total_fees_usd) } else { None },
+                avg_fee_usd: if row.avg_fee_usd.is_finite() { Some(row.avg_fee_usd) } else { None },
+                max_fee_usd: if row.max_fee_usd.is_finite() { Some(row.max_fee_usd) } else { None },
+                p90_fee_usd: if row.p90_fee_usd.is_finite() { Some(row.p90_fee_usd) } else { None },
+                p99_fee_usd: if row.p99_fee_usd.is_finite() { Some(row.p99_fee_usd) } else { None },
+                stddev_fee_usd: if row.stddev_fee_usd.is_finite() { Some(row.stddev_fee_usd) } else { None },
+                success_proportion: if row.success_proportion.is_finite() { Some(row.success_proportion) } else { None },
             })
             .collect())
     }
@@ -399,25 +629,37 @@ impl QueryRoot {
     /// Query for Indexer level aggregations
     async fn indexer_aggregations(
         &self,
-        _ctx: &Context<'_>, // Prefix ctx with underscore
-        interval: AggregationInterval,
-        time_range: TimeRangeInput,
+        _ctx: &Context<'_>,
+        #[graphql(desc = "Aggregation interval (default: Hourly)")] interval: Option<AggregationInterval>,
+        #[graphql(desc = "Time range (RFC3339 format, default: last 24 hours)")] time_range: Option<TimeRangeInput>,
         #[graphql(desc = "Optional filters for the query")] filter: Option<AggregationFilterInput>,
-        #[graphql(desc = "Maximum number of records to return (default 1000, max 10000)")]
-        limit: Option<i32>,
+        #[graphql(desc = "Maximum number of records to return (default 1000, max 10000)")] limit: Option<i32>,
+        #[graphql(desc = "Optional sorting (default: time_bucket DESC)")] sort: Option<IndexerSortInput>, // Use IndexerSortInput
     ) -> Result<Vec<IndexerAggregationOutput>, String> {
-        // Return updated Output struct
         let client = get_clickhouse_client()?;
-        let view_name = format!("view_agg_indexer_{}", interval.table_suffix());
 
-        // Build WHERE clause (logic remains the same, lines 501-521)
+        // --- Handle Defaults (Similar to deployment_aggregations) ---
+        let actual_interval = interval.unwrap_or(AggregationInterval::Hourly);
+        let (from_dt, to_dt) = match time_range {
+             Some(tr) => (
+                DateTime::parse_from_rfc3339(&tr.from)
+                    .map_err(|e| format!("Invalid 'from' timestamp format: {}", e))?
+                    .with_timezone(&Utc),
+                DateTime::parse_from_rfc3339(&tr.to)
+                    .map_err(|e| format!("Invalid 'to' timestamp format: {}", e))?
+                    .with_timezone(&Utc),
+            ),
+            None => {
+                let now = Utc::now();
+                (now - chrono::Duration::hours(24), now)
+            }
+        };
+        // --- End Handle Defaults ---
+
+        let view_name = format!("view_agg_indexer_{}", actual_interval.table_suffix());
+
+        // Build WHERE clause (Similar logic, different filters)
         let mut conditions = Vec::new();
-        let from_dt = DateTime::parse_from_rfc3339(&time_range.from)
-            .map_err(|e| format!("Invalid 'from' timestamp format: {}", e))?
-            .with_timezone(&Utc);
-        let to_dt = DateTime::parse_from_rfc3339(&time_range.to)
-            .map_err(|e| format!("Invalid 'to' timestamp format: {}", e))?
-            .with_timezone(&Utc);
         conditions.push(format!(
             "time_bucket >= toDateTime({})",
             from_dt.timestamp()
@@ -426,16 +668,32 @@ impl QueryRoot {
 
         if let Some(f) = filter {
             if let Some(gw) = &f.gateway_id {
-                conditions.push(format!("gateway_id = '{}'", gw));
+                 conditions.push(format!("gateway_id = '{}'", gw.replace('\'', "''")));
             }
             if let Some(ix) = &f.indexer {
-                conditions.push(format!("indexer = '{}'", ix));
+                 conditions.push(format!("indexer = '{}'", ix.replace('\'', "''"))); // Filter by indexer
             }
-            // No subgraph/allocation filters applicable here
+             // No subgraph/allocation filters applicable here
         }
 
         let where_clause = format!("WHERE {}", conditions.join(" AND "));
-        let query_limit = limit.unwrap_or(1000).clamp(0, 10000); // Use clamp
+        let query_limit = limit.unwrap_or(1000).clamp(1, 10000);
+
+        // --- Build ORDER BY Clause (Using IndexerSortField) ---
+        let order_by_clause = match sort {
+            Some(s) => {
+                let direction = match s.direction.unwrap_or(SortDirection::Desc) {
+                    SortDirection::Asc => "ASC",
+                    SortDirection::Desc => "DESC",
+                };
+                format!("ORDER BY {} {}", s.field.column_name(), direction) // Use IndexerSortField mapping
+            }
+            None => {
+                // Default sort order
+                "ORDER BY time_bucket DESC, indexer ASC, gateway_id ASC".to_string()
+            }
+        };
+        // --- End Build ORDER BY Clause ---
 
         // Update SELECT list to include all new fields
         let query = format!(
@@ -449,24 +707,23 @@ impl QueryRoot {
                     avg_blocks_behind, max_blocks_behind, p90_blocks_behind, p99_blocks_behind, stddev_blocks_behind, \
                     success_proportion \
              FROM {} {} \
-             ORDER BY time_bucket DESC, indexer ASC, gateway_id ASC \
+             {} \
              LIMIT {}",
-            view_name, where_clause, query_limit
+            view_name, where_clause, order_by_clause, query_limit // Use dynamic order_by_clause
         );
 
         println!("Executing query: {}", query);
 
         let rows = client
             .query(&query)
-            .fetch_all::<IndexerAggregationRow>() // Use updated Row struct
+            .fetch_all::<IndexerAggregationRow>() // Use Indexer Row struct
             .await
             .map_err(|e| format!("Database query failed: {}", e))?;
 
-        // Map directly, row-by-row, including new fields
+        // Map results (Similar logic, different fields)
         Ok(rows
             .into_iter()
             .map(|row| IndexerAggregationOutput {
-                // Use updated Output struct
                 time_bucket: Utc
                     .timestamp_opt(row.time_bucket as i64, 0)
                     .single()
@@ -476,29 +733,29 @@ impl QueryRoot {
                 query_count: row.query_count,
                 success_count: row.success_count,
                 failure_count: row.failure_count,
-                // Map all new fields, handling Option for NaN/Inf safety
-                avg_indexer_response_time_ms: Some(row.avg_indexer_response_time_ms),
+                // Map all fields, handling Option for NaN/Inf safety
+                avg_indexer_response_time_ms: if row.avg_indexer_response_time_ms.is_finite() { Some(row.avg_indexer_response_time_ms) } else { None },
                 max_indexer_response_time_ms: Some(row.max_indexer_response_time_ms),
-                p90_indexer_response_time_ms: Some(row.p90_indexer_response_time_ms),
-                p99_indexer_response_time_ms: Some(row.p99_indexer_response_time_ms),
-                stddev_indexer_response_time_ms: Some(row.stddev_indexer_response_time_ms),
-                total_fee_grt: Some(row.total_fee_grt),
-                avg_fee_grt: Some(row.avg_fee_grt),
-                max_fee_grt: Some(row.max_fee_grt),
-                p90_fee_grt: Some(row.p90_fee_grt),
-                p99_fee_grt: Some(row.p99_fee_grt),
-                stddev_fee_grt: Some(row.stddev_fee_grt),
-                avg_seconds_behind: Some(row.avg_seconds_behind),
+                p90_indexer_response_time_ms: if row.p90_indexer_response_time_ms.is_finite() { Some(row.p90_indexer_response_time_ms) } else { None },
+                p99_indexer_response_time_ms: if row.p99_indexer_response_time_ms.is_finite() { Some(row.p99_indexer_response_time_ms) } else { None },
+                stddev_indexer_response_time_ms: if row.stddev_indexer_response_time_ms.is_finite() { Some(row.stddev_indexer_response_time_ms) } else { None },
+                total_fee_grt: if row.total_fee_grt.is_finite() { Some(row.total_fee_grt) } else { None },
+                avg_fee_grt: if row.avg_fee_grt.is_finite() { Some(row.avg_fee_grt) } else { None },
+                max_fee_grt: if row.max_fee_grt.is_finite() { Some(row.max_fee_grt) } else { None },
+                p90_fee_grt: if row.p90_fee_grt.is_finite() { Some(row.p90_fee_grt) } else { None },
+                p99_fee_grt: if row.p99_fee_grt.is_finite() { Some(row.p99_fee_grt) } else { None },
+                stddev_fee_grt: if row.stddev_fee_grt.is_finite() { Some(row.stddev_fee_grt) } else { None },
+                avg_seconds_behind: if row.avg_seconds_behind.is_finite() { Some(row.avg_seconds_behind) } else { None },
                 max_seconds_behind: Some(row.max_seconds_behind),
-                p90_seconds_behind: Some(row.p90_seconds_behind),
-                p99_seconds_behind: Some(row.p99_seconds_behind),
-                stddev_seconds_behind: Some(row.stddev_seconds_behind),
-                avg_blocks_behind: Some(row.avg_blocks_behind),
+                p90_seconds_behind: if row.p90_seconds_behind.is_finite() { Some(row.p90_seconds_behind) } else { None },
+                p99_seconds_behind: if row.p99_seconds_behind.is_finite() { Some(row.p99_seconds_behind) } else { None },
+                stddev_seconds_behind: if row.stddev_seconds_behind.is_finite() { Some(row.stddev_seconds_behind) } else { None },
+                avg_blocks_behind: if row.avg_blocks_behind.is_finite() { Some(row.avg_blocks_behind) } else { None },
                 max_blocks_behind: Some(row.max_blocks_behind),
-                p90_blocks_behind: Some(row.p90_blocks_behind),
-                p99_blocks_behind: Some(row.p99_blocks_behind),
-                stddev_blocks_behind: Some(row.stddev_blocks_behind),
-                success_proportion: Some(row.success_proportion),
+                p90_blocks_behind: if row.p90_blocks_behind.is_finite() { Some(row.p90_blocks_behind) } else { None },
+                p99_blocks_behind: if row.p99_blocks_behind.is_finite() { Some(row.p99_blocks_behind) } else { None },
+                stddev_blocks_behind: if row.stddev_blocks_behind.is_finite() { Some(row.stddev_blocks_behind) } else { None },
+                success_proportion: if row.success_proportion.is_finite() { Some(row.success_proportion) } else { None },
             })
             .collect())
     }
@@ -506,24 +763,37 @@ impl QueryRoot {
     /// Query for Allocation level aggregations (grouped by subgraph and indexer)
     async fn allocation_aggregations(
         &self,
-        _ctx: &Context<'_>, // Prefix ctx with underscore
-        interval: AggregationInterval,
-        time_range: TimeRangeInput,
+        _ctx: &Context<'_>,
+        #[graphql(desc = "Aggregation interval (default: Hourly)")] interval: Option<AggregationInterval>,
+        #[graphql(desc = "Time range (RFC3339 format, default: last 24 hours)")] time_range: Option<TimeRangeInput>,
         #[graphql(desc = "Optional filters for the query")] filter: Option<AggregationFilterInput>,
-        #[graphql(desc = "Maximum number of records to return (default 1000, max 10000)")]
-        limit: Option<i32>,
+        #[graphql(desc = "Maximum number of records to return (default 1000, max 10000)")] limit: Option<i32>,
+        #[graphql(desc = "Optional sorting (default: time_bucket DESC)")] sort: Option<AllocationSortInput>, // Use AllocationSortInput
     ) -> Result<Vec<AllocationAggregationOutput>, String> {
-        let client = get_clickhouse_client()?;
-        let view_name = format!("view_agg_allocation_{}", interval.table_suffix());
+         let client = get_clickhouse_client()?;
 
-        // Build WHERE clause
+        // --- Handle Defaults (Similar to deployment_aggregations) ---
+        let actual_interval = interval.unwrap_or(AggregationInterval::Hourly);
+        let (from_dt, to_dt) = match time_range {
+             Some(tr) => (
+                DateTime::parse_from_rfc3339(&tr.from)
+                    .map_err(|e| format!("Invalid 'from' timestamp format: {}", e))?
+                    .with_timezone(&Utc),
+                DateTime::parse_from_rfc3339(&tr.to)
+                    .map_err(|e| format!("Invalid 'to' timestamp format: {}", e))?
+                    .with_timezone(&Utc),
+            ),
+            None => {
+                let now = Utc::now();
+                (now - chrono::Duration::hours(24), now)
+            }
+        };
+        // --- End Handle Defaults ---
+
+        let view_name = format!("view_agg_allocation_{}", actual_interval.table_suffix());
+
+        // Build WHERE clause (Includes subgraph and indexer filters)
         let mut conditions = Vec::new();
-        let from_dt = DateTime::parse_from_rfc3339(&time_range.from)
-            .map_err(|e| format!("Invalid 'from' timestamp format: {}", e))?
-            .with_timezone(&Utc);
-        let to_dt = DateTime::parse_from_rfc3339(&time_range.to)
-            .map_err(|e| format!("Invalid 'to' timestamp format: {}", e))?
-            .with_timezone(&Utc);
         conditions.push(format!(
             "time_bucket >= toDateTime({})",
             from_dt.timestamp()
@@ -532,20 +802,37 @@ impl QueryRoot {
 
         if let Some(f) = filter {
             if let Some(gw) = &f.gateway_id {
-                conditions.push(format!("gateway_id = '{}'", gw));
+                 conditions.push(format!("gateway_id = '{}'", gw.replace('\'', "''")));
             }
-            if let Some(sg) = &f.subgraph {
-                conditions.push(format!("subgraph = '{}'", sg));
+             if let Some(sg) = &f.subgraph {
+                 conditions.push(format!("subgraph = '{}'", sg.replace('\'', "''")));
             }
             if let Some(ix) = &f.indexer {
-                conditions.push(format!("indexer = '{}'", ix));
+                 conditions.push(format!("indexer = '{}'", ix.replace('\'', "''")));
             }
+            // Note: Allocation ID filter is not used here as the view aggregates by subgraph/indexer
         }
 
         let where_clause = format!("WHERE {}", conditions.join(" AND "));
-        let query_limit = limit.unwrap_or(1000).clamp(0, 10000); // Use clamp
+        let query_limit = limit.unwrap_or(1000).clamp(1, 10000);
 
-        // Query directly selects pre-aggregated columns, no further aggregation or GROUP BY
+        // --- Build ORDER BY Clause (Using AllocationSortField) ---
+        let order_by_clause = match sort {
+            Some(s) => {
+                let direction = match s.direction.unwrap_or(SortDirection::Desc) {
+                    SortDirection::Asc => "ASC",
+                    SortDirection::Desc => "DESC",
+                };
+                format!("ORDER BY {} {}", s.field.column_name(), direction) // Use AllocationSortField mapping
+            }
+            None => {
+                // Default sort order
+                "ORDER BY time_bucket DESC, subgraph ASC, indexer ASC, gateway_id ASC".to_string()
+            }
+        };
+        // --- End Build ORDER BY Clause ---
+
+        // Query uses the same fields as indexer aggregation but groups differently in the view
         let query = format!(
             "SELECT time_bucket, subgraph, indexer, gateway_id, \
                     query_count, success_count, failure_count, \
@@ -557,57 +844,55 @@ impl QueryRoot {
                     avg_blocks_behind, max_blocks_behind, p90_blocks_behind, p99_blocks_behind, stddev_blocks_behind, \
                     success_proportion \
              FROM {} {} \
-             ORDER BY time_bucket DESC, subgraph ASC, indexer ASC, gateway_id ASC \
+             {} \
              LIMIT {}",
-            view_name, where_clause, query_limit
+            view_name, where_clause, order_by_clause, query_limit // Use dynamic order_by_clause
         );
 
         println!("Executing query: {}", query);
 
         let rows = client
             .query(&query)
-            .fetch_all::<AllocationAggregationRow>() // Uses existing struct
+            .fetch_all::<AllocationAggregationRow>() // Use Allocation Row struct
             .await
             .map_err(|e| format!("Database query failed: {}", e))?;
 
-        // Map directly, row-by-row, including new fields
+        // Map results (Identical mapping logic to Indexer, just different input row type)
         Ok(rows
             .into_iter()
             .map(|row| AllocationAggregationOutput {
-                // Uses existing struct
-                time_bucket: Utc
+                 time_bucket: Utc
                     .timestamp_opt(row.time_bucket as i64, 0)
                     .single()
                     .map_or_else(|| "Invalid Timestamp".to_string(), |dt| dt.to_rfc3339()),
-                subgraph: row.subgraph,
+                subgraph: row.subgraph, // Allocation includes subgraph
                 indexer: row.indexer,
                 gateway_id: row.gateway_id,
                 query_count: row.query_count,
                 success_count: row.success_count,
                 failure_count: row.failure_count,
-                // Map all new fields (same mapping logic as Indexer)
-                avg_indexer_response_time_ms: Some(row.avg_indexer_response_time_ms),
+                avg_indexer_response_time_ms: if row.avg_indexer_response_time_ms.is_finite() { Some(row.avg_indexer_response_time_ms) } else { None },
                 max_indexer_response_time_ms: Some(row.max_indexer_response_time_ms),
-                p90_indexer_response_time_ms: Some(row.p90_indexer_response_time_ms),
-                p99_indexer_response_time_ms: Some(row.p99_indexer_response_time_ms),
-                stddev_indexer_response_time_ms: Some(row.stddev_indexer_response_time_ms),
-                total_fee_grt: Some(row.total_fee_grt),
-                avg_fee_grt: Some(row.avg_fee_grt),
-                max_fee_grt: Some(row.max_fee_grt),
-                p90_fee_grt: Some(row.p90_fee_grt),
-                p99_fee_grt: Some(row.p99_fee_grt),
-                stddev_fee_grt: Some(row.stddev_fee_grt),
-                avg_seconds_behind: Some(row.avg_seconds_behind),
+                p90_indexer_response_time_ms: if row.p90_indexer_response_time_ms.is_finite() { Some(row.p90_indexer_response_time_ms) } else { None },
+                p99_indexer_response_time_ms: if row.p99_indexer_response_time_ms.is_finite() { Some(row.p99_indexer_response_time_ms) } else { None },
+                stddev_indexer_response_time_ms: if row.stddev_indexer_response_time_ms.is_finite() { Some(row.stddev_indexer_response_time_ms) } else { None },
+                total_fee_grt: if row.total_fee_grt.is_finite() { Some(row.total_fee_grt) } else { None },
+                avg_fee_grt: if row.avg_fee_grt.is_finite() { Some(row.avg_fee_grt) } else { None },
+                max_fee_grt: if row.max_fee_grt.is_finite() { Some(row.max_fee_grt) } else { None },
+                p90_fee_grt: if row.p90_fee_grt.is_finite() { Some(row.p90_fee_grt) } else { None },
+                p99_fee_grt: if row.p99_fee_grt.is_finite() { Some(row.p99_fee_grt) } else { None },
+                stddev_fee_grt: if row.stddev_fee_grt.is_finite() { Some(row.stddev_fee_grt) } else { None },
+                avg_seconds_behind: if row.avg_seconds_behind.is_finite() { Some(row.avg_seconds_behind) } else { None },
                 max_seconds_behind: Some(row.max_seconds_behind),
-                p90_seconds_behind: Some(row.p90_seconds_behind),
-                p99_seconds_behind: Some(row.p99_seconds_behind),
-                stddev_seconds_behind: Some(row.stddev_seconds_behind),
-                avg_blocks_behind: Some(row.avg_blocks_behind),
+                p90_seconds_behind: if row.p90_seconds_behind.is_finite() { Some(row.p90_seconds_behind) } else { None },
+                p99_seconds_behind: if row.p99_seconds_behind.is_finite() { Some(row.p99_seconds_behind) } else { None },
+                stddev_seconds_behind: if row.stddev_seconds_behind.is_finite() { Some(row.stddev_seconds_behind) } else { None },
+                avg_blocks_behind: if row.avg_blocks_behind.is_finite() { Some(row.avg_blocks_behind) } else { None },
                 max_blocks_behind: Some(row.max_blocks_behind),
-                p90_blocks_behind: Some(row.p90_blocks_behind),
-                p99_blocks_behind: Some(row.p99_blocks_behind),
-                stddev_blocks_behind: Some(row.stddev_blocks_behind),
-                success_proportion: Some(row.success_proportion),
+                p90_blocks_behind: if row.p90_blocks_behind.is_finite() { Some(row.p90_blocks_behind) } else { None },
+                p99_blocks_behind: if row.p99_blocks_behind.is_finite() { Some(row.p99_blocks_behind) } else { None },
+                stddev_blocks_behind: if row.stddev_blocks_behind.is_finite() { Some(row.stddev_blocks_behind) } else { None },
+                success_proportion: if row.success_proportion.is_finite() { Some(row.success_proportion) } else { None },
             })
             .collect())
     }
