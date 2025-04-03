@@ -5,9 +5,48 @@ use async_graphql::{
 use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse};
 use chrono::{DateTime, TimeZone, Utc};
 use clickhouse::{Client, Row};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use serde::Deserialize;
 use std::env;
 use tokio::signal::unix::{signal, SignalKind};
+
+// --- Input Validation Regexes ---
+// Define allowed characters/patterns. Adjust these based on actual expected formats.
+static GATEWAY_ID_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[a-zA-Z0-9_-]+$").unwrap());
+// Allow alphanumeric, hyphens, slashes (e.g., for ENS names/subgraph names)
+static SUBGRAPH_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[a-zA-Z0-9_/-]+$").unwrap());
+// Allow hex characters, optionally prefixed with 0x
+static INDEXER_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(0x)?[a-fA-F0-9]+$").unwrap());
+
+// --- ClickHouse String Escaping ---
+/// Escapes a string for safe inclusion within single quotes in a ClickHouse SQL query.
+/// Replaces backslashes (`\`) with `\\` and single quotes (`'`) with `\'`.
+fn escape_clickhouse_string_literal(input: &str) -> String {
+    input.replace('\\', r"\\").replace('\'', r"\'")
+}
+
+// --- Time Parsing Helper ---
+/// Parses a string as either a Unix timestamp (seconds) or an RFC3339 datetime.
+fn parse_datetime_input(input: &str) -> Result<DateTime<Utc>, String> {
+    // Try parsing as Unix timestamp (integer seconds) first
+    if let Ok(ts) = input.parse::<i64>() {
+        match Utc.timestamp_opt(ts, 0).single() {
+            Some(dt) => Ok(dt),
+            None => Err(format!("Invalid Unix timestamp value: {}", ts)),
+        }
+    } else {
+        // Fallback to parsing as RFC3339
+        DateTime::parse_from_rfc3339(input)
+            .map(|dt| dt.with_timezone(&Utc))
+            .map_err(|e| {
+                format!(
+                    "Invalid format: Expected Unix timestamp or RFC3339. Parse error: {}",
+                    e
+                )
+            })
+    }
+}
 
 // --- Structs for Aggregated Data ---
 
@@ -278,15 +317,13 @@ struct AllocationAggregationOutput {
 
 // --- Input Objects for Filtering ---
 
-#[derive(InputObject, Debug)]
+#[derive(InputObject, Debug, Clone)]
 struct TimeRangeInput {
-    /// Start time (inclusive), RFC3339 format (e.g., "2023-01-01T00:00:00Z")
-    from: String,
-    /// End time (exclusive), RFC3339 format (e.g., "2023-01-02T00:00:00Z")
-    to: String,
+    from: Option<String>,
+    to: Option<String>,
 }
 
-#[derive(InputObject, Debug)]
+#[derive(InputObject, Debug, Clone)]
 struct AggregationFilterInput {
     /// Optional: Filter by gateway ID
     gateway_id: Option<String>,
@@ -506,75 +543,118 @@ impl QueryRoot {
     async fn deployment_aggregations(
         &self,
         _ctx: &Context<'_>,
-        #[graphql(desc = "Aggregation interval (default: Hourly)")] interval: Option<AggregationInterval>,
-        #[graphql(desc = "Time range (RFC3339 format, default: last 24 hours)")] time_range: Option<TimeRangeInput>,
+        #[graphql(desc = "Aggregation interval (default: Hourly)")] interval: Option<
+            AggregationInterval,
+        >,
+        #[graphql(
+            desc = "Optional time range filter. If omitted, defaults to the last 24 hours. \
+                              If provided, requires at least 'from' or 'to'."
+        )]
+        time_range: Option<TimeRangeInput>,
         #[graphql(desc = "Optional filters for the query")] filter: Option<AggregationFilterInput>,
-        #[graphql(desc = "Maximum number of records to return (default 1000, max 10000)")] limit: Option<i32>,
-        #[graphql(desc = "Optional sorting (default: time_bucket DESC)")] sort: Option<DeploymentSortInput>,
+        #[graphql(desc = "Maximum number of records to return (default 1000, max 10000)")]
+        limit: Option<i32>,
+        #[graphql(desc = "Optional sorting (default: time_bucket DESC)")] sort: Option<
+            DeploymentSortInput,
+        >,
     ) -> Result<Vec<DeploymentAggregationOutput>, String> {
         let client = get_clickhouse_client()?;
-
-        // --- Handle Defaults ---
-        let actual_interval = interval.unwrap_or(AggregationInterval::Hourly); // Default interval
-        let (from_dt, to_dt) = match time_range {
-            Some(tr) => (
-                DateTime::parse_from_rfc3339(&tr.from)
-                    .map_err(|e| format!("Invalid 'from' timestamp format: {}", e))?
-                    .with_timezone(&Utc),
-                DateTime::parse_from_rfc3339(&tr.to)
-                    .map_err(|e| format!("Invalid 'to' timestamp format: {}", e))?
-                    .with_timezone(&Utc),
-            ),
-            None => {
-                // Default to last 24 hours
-                let now = Utc::now();
-                (now - chrono::Duration::hours(24), now)
-            }
-        };
-        // --- End Handle Defaults ---
-
+        let actual_interval = interval.unwrap_or(AggregationInterval::Hourly);
         let view_name = format!("view_agg_deployment_{}", actual_interval.table_suffix());
 
-        // Build WHERE clause
+        // --- Build WHERE clause ---
         let mut conditions = Vec::new();
-        conditions.push(format!(
-            "time_bucket >= toDateTime({})",
-            from_dt.timestamp()
-        ));
-        conditions.push(format!("time_bucket < toDateTime({})", to_dt.timestamp()));
 
+        // --- Handle Time Range ---
+        match time_range {
+            // Case 1: time_range argument is completely omitted - use default
+            None => {
+                let now = Utc::now();
+                let default_from = now - chrono::Duration::hours(24);
+                conditions.push(format!(
+                    "time_bucket >= toDateTime({})",
+                    default_from.timestamp()
+                ));
+                conditions.push(format!("time_bucket < toDateTime({})", now.timestamp()));
+            }
+            // Case 2: time_range argument is provided
+            Some(tr) => {
+                let parsed_from = tr.from.as_deref().map(parse_datetime_input).transpose()?;
+                let parsed_to = tr.to.as_deref().map(parse_datetime_input).transpose()?;
+
+                match (parsed_from, parsed_to) {
+                    (None, None) => {
+                        // If time_range was provided but both fields are null/missing
+                        return Err(
+                            "Time range filter requires at least 'from' or 'to' to be specified."
+                                .to_string(),
+                        );
+                    }
+                    (Some(from_dt), None) => {
+                        conditions.push(format!(
+                            "time_bucket >= toDateTime({})",
+                            from_dt.timestamp()
+                        ));
+                    }
+                    (None, Some(to_dt)) => {
+                        conditions.push(format!("time_bucket < toDateTime({})", to_dt.timestamp()));
+                    }
+                    (Some(from_dt), Some(to_dt)) => {
+                        if from_dt >= to_dt {
+                            return Err("'from' time must be earlier than 'to' time.".to_string());
+                        }
+                        conditions.push(format!(
+                            "time_bucket >= toDateTime({})",
+                            from_dt.timestamp()
+                        ));
+                        conditions.push(format!("time_bucket < toDateTime({})", to_dt.timestamp()));
+                    }
+                }
+            }
+        }
+        // --- End Handle Time Range ---
+
+        // --- Handle Other Filters (gateway_id, subgraph) ---
         if let Some(f) = filter {
             if let Some(gw) = &f.gateway_id {
-                // Basic validation/sanitization could be added here if needed
-                conditions.push(format!("gateway_id = '{}'", gw.replace('\'', "''"))); // Simple quote escape
+                // --- Validate and Escape gateway_id ---
+                if !GATEWAY_ID_REGEX.is_match(gw) {
+                    return Err("Invalid format for gateway_id filter".to_string());
+                }
+                let escaped_gw = escape_clickhouse_string_literal(gw);
+                conditions.push(format!("gateway_id = '{}'", escaped_gw));
+                // --- End Validation ---
             }
             if let Some(sg) = &f.subgraph {
-                conditions.push(format!("subgraph = '{}'", sg.replace('\'', "''"))); // Simple quote escape
+                // --- Validate and Escape subgraph ---
+                if !SUBGRAPH_REGEX.is_match(sg) {
+                    return Err("Invalid format for subgraph filter".to_string());
+                }
+                let escaped_sg = escape_clickhouse_string_literal(sg);
+                conditions.push(format!("subgraph = '{}'", escaped_sg));
+                // --- End Validation ---
             }
-            // No indexer/allocation filters applicable here
+            // No indexer filter applicable here
         }
+        // --- End Handle Other Filters ---
 
+        // Should always have at least one time condition now
         let where_clause = format!("WHERE {}", conditions.join(" AND "));
-        let query_limit = limit.unwrap_or(1000).clamp(1, 10000); // Ensure limit is at least 1
+        let query_limit = limit.unwrap_or(1000).clamp(1, 10000);
 
         // --- Build ORDER BY Clause ---
         let order_by_clause = match sort {
             Some(s) => {
-                let direction = match s.direction.unwrap_or(SortDirection::Desc) { // Default direction
+                let direction = match s.direction.unwrap_or(SortDirection::Desc) {
                     SortDirection::Asc => "ASC",
                     SortDirection::Desc => "DESC",
                 };
-                // Map the enum field to the actual column name
                 format!("ORDER BY {} {}", s.field.column_name(), direction)
             }
-            None => {
-                // Default sort order
-                "ORDER BY time_bucket DESC, subgraph ASC, gateway_id ASC".to_string()
-            }
+            None => "ORDER BY time_bucket DESC, subgraph ASC, gateway_id ASC".to_string(),
         };
-        // --- End Build ORDER BY Clause ---
 
-        // Query directly selects pre-aggregated columns
+        // --- Build and Execute Query ---
         let query = format!(
             "SELECT time_bucket, subgraph, gateway_id, \
                     query_count, success_count, failure_count, \
@@ -584,10 +664,10 @@ impl QueryRoot {
              FROM {} {} \
              {} \
              LIMIT {}",
-            view_name, where_clause, order_by_clause, query_limit // Use dynamic order_by_clause
+            view_name, where_clause, order_by_clause, query_limit
         );
 
-        println!("Executing query: {}", query); // Keep for debugging if needed
+        println!("Executing query: {}", query);
 
         let rows = client
             .query(&query)
@@ -608,20 +688,62 @@ impl QueryRoot {
                 query_count: row.query_count,
                 success_count: row.success_count,
                 failure_count: row.failure_count,
-                // Wrap numeric fields in Option, handle potential NaN/Inf from ClickHouse Float64 if necessary
-                // Although our views calculate these, being defensive is good.
-                avg_response_time_ms: if row.avg_response_time_ms.is_finite() { Some(row.avg_response_time_ms) } else { None },
-                max_response_time_ms: Some(row.max_response_time_ms), // u32 cannot be NaN/Inf
-                p90_response_time_ms: if row.p90_response_time_ms.is_finite() { Some(row.p90_response_time_ms) } else { None },
-                p99_response_time_ms: if row.p99_response_time_ms.is_finite() { Some(row.p99_response_time_ms) } else { None },
-                stddev_response_time_ms: if row.stddev_response_time_ms.is_finite() { Some(row.stddev_response_time_ms) } else { None },
-                total_fees_usd: if row.total_fees_usd.is_finite() { Some(row.total_fees_usd) } else { None },
-                avg_fee_usd: if row.avg_fee_usd.is_finite() { Some(row.avg_fee_usd) } else { None },
-                max_fee_usd: if row.max_fee_usd.is_finite() { Some(row.max_fee_usd) } else { None },
-                p90_fee_usd: if row.p90_fee_usd.is_finite() { Some(row.p90_fee_usd) } else { None },
-                p99_fee_usd: if row.p99_fee_usd.is_finite() { Some(row.p99_fee_usd) } else { None },
-                stddev_fee_usd: if row.stddev_fee_usd.is_finite() { Some(row.stddev_fee_usd) } else { None },
-                success_proportion: if row.success_proportion.is_finite() { Some(row.success_proportion) } else { None },
+                avg_response_time_ms: if row.avg_response_time_ms.is_finite() {
+                    Some(row.avg_response_time_ms)
+                } else {
+                    None
+                },
+                max_response_time_ms: Some(row.max_response_time_ms),
+                p90_response_time_ms: if row.p90_response_time_ms.is_finite() {
+                    Some(row.p90_response_time_ms)
+                } else {
+                    None
+                },
+                p99_response_time_ms: if row.p99_response_time_ms.is_finite() {
+                    Some(row.p99_response_time_ms)
+                } else {
+                    None
+                },
+                stddev_response_time_ms: if row.stddev_response_time_ms.is_finite() {
+                    Some(row.stddev_response_time_ms)
+                } else {
+                    None
+                },
+                total_fees_usd: if row.total_fees_usd.is_finite() {
+                    Some(row.total_fees_usd)
+                } else {
+                    None
+                },
+                avg_fee_usd: if row.avg_fee_usd.is_finite() {
+                    Some(row.avg_fee_usd)
+                } else {
+                    None
+                },
+                max_fee_usd: if row.max_fee_usd.is_finite() {
+                    Some(row.max_fee_usd)
+                } else {
+                    None
+                },
+                p90_fee_usd: if row.p90_fee_usd.is_finite() {
+                    Some(row.p90_fee_usd)
+                } else {
+                    None
+                },
+                p99_fee_usd: if row.p99_fee_usd.is_finite() {
+                    Some(row.p99_fee_usd)
+                } else {
+                    None
+                },
+                stddev_fee_usd: if row.stddev_fee_usd.is_finite() {
+                    Some(row.stddev_fee_usd)
+                } else {
+                    None
+                },
+                success_proportion: if row.success_proportion.is_finite() {
+                    Some(row.success_proportion)
+                } else {
+                    None
+                },
             })
             .collect())
     }
@@ -630,51 +752,97 @@ impl QueryRoot {
     async fn indexer_aggregations(
         &self,
         _ctx: &Context<'_>,
-        #[graphql(desc = "Aggregation interval (default: Hourly)")] interval: Option<AggregationInterval>,
-        #[graphql(desc = "Time range (RFC3339 format, default: last 24 hours)")] time_range: Option<TimeRangeInput>,
+        #[graphql(desc = "Aggregation interval (default: Hourly)")] interval: Option<
+            AggregationInterval,
+        >,
+        #[graphql(
+            desc = "Optional time range filter. If omitted, defaults to the last 24 hours. \
+                              If provided, requires at least 'from' or 'to'."
+        )]
+        time_range: Option<TimeRangeInput>,
         #[graphql(desc = "Optional filters for the query")] filter: Option<AggregationFilterInput>,
-        #[graphql(desc = "Maximum number of records to return (default 1000, max 10000)")] limit: Option<i32>,
-        #[graphql(desc = "Optional sorting (default: time_bucket DESC)")] sort: Option<IndexerSortInput>, // Use IndexerSortInput
+        #[graphql(desc = "Maximum number of records to return (default 1000, max 10000)")]
+        limit: Option<i32>,
+        #[graphql(desc = "Optional sorting (default: time_bucket DESC)")] sort: Option<
+            IndexerSortInput,
+        >,
     ) -> Result<Vec<IndexerAggregationOutput>, String> {
         let client = get_clickhouse_client()?;
-
-        // --- Handle Defaults (Similar to deployment_aggregations) ---
         let actual_interval = interval.unwrap_or(AggregationInterval::Hourly);
-        let (from_dt, to_dt) = match time_range {
-             Some(tr) => (
-                DateTime::parse_from_rfc3339(&tr.from)
-                    .map_err(|e| format!("Invalid 'from' timestamp format: {}", e))?
-                    .with_timezone(&Utc),
-                DateTime::parse_from_rfc3339(&tr.to)
-                    .map_err(|e| format!("Invalid 'to' timestamp format: {}", e))?
-                    .with_timezone(&Utc),
-            ),
-            None => {
-                let now = Utc::now();
-                (now - chrono::Duration::hours(24), now)
-            }
-        };
-        // --- End Handle Defaults ---
-
         let view_name = format!("view_agg_indexer_{}", actual_interval.table_suffix());
 
-        // Build WHERE clause (Similar logic, different filters)
+        // --- Build WHERE clause ---
         let mut conditions = Vec::new();
-        conditions.push(format!(
-            "time_bucket >= toDateTime({})",
-            from_dt.timestamp()
-        ));
-        conditions.push(format!("time_bucket < toDateTime({})", to_dt.timestamp()));
 
+        // --- Handle Time Range (Apply same logic as deployment_aggregations) ---
+        match time_range {
+            None => {
+                let now = Utc::now();
+                let default_from = now - chrono::Duration::hours(24);
+                conditions.push(format!(
+                    "time_bucket >= toDateTime({})",
+                    default_from.timestamp()
+                ));
+                conditions.push(format!("time_bucket < toDateTime({})", now.timestamp()));
+            }
+            Some(tr) => {
+                let parsed_from = tr.from.as_deref().map(parse_datetime_input).transpose()?;
+                let parsed_to = tr.to.as_deref().map(parse_datetime_input).transpose()?;
+
+                match (parsed_from, parsed_to) {
+                    (None, None) => {
+                        return Err(
+                            "Time range filter requires at least 'from' or 'to' to be specified."
+                                .to_string(),
+                        );
+                    }
+                    (Some(from_dt), None) => {
+                        conditions.push(format!(
+                            "time_bucket >= toDateTime({})",
+                            from_dt.timestamp()
+                        ));
+                    }
+                    (None, Some(to_dt)) => {
+                        conditions.push(format!("time_bucket < toDateTime({})", to_dt.timestamp()));
+                    }
+                    (Some(from_dt), Some(to_dt)) => {
+                        if from_dt >= to_dt {
+                            return Err("'from' time must be earlier than 'to' time.".to_string());
+                        }
+                        conditions.push(format!(
+                            "time_bucket >= toDateTime({})",
+                            from_dt.timestamp()
+                        ));
+                        conditions.push(format!("time_bucket < toDateTime({})", to_dt.timestamp()));
+                    }
+                }
+            }
+        }
+        // --- End Handle Time Range ---
+
+        // --- Handle Other Filters (gateway_id, indexer) ---
         if let Some(f) = filter {
             if let Some(gw) = &f.gateway_id {
-                 conditions.push(format!("gateway_id = '{}'", gw.replace('\'', "''")));
+                // --- Validate and Escape gateway_id ---
+                if !GATEWAY_ID_REGEX.is_match(gw) {
+                    return Err("Invalid format for gateway_id filter".to_string());
+                }
+                let escaped_gw = escape_clickhouse_string_literal(gw);
+                conditions.push(format!("gateway_id = '{}'", escaped_gw));
+                // --- End Validation ---
             }
             if let Some(ix) = &f.indexer {
-                 conditions.push(format!("indexer = '{}'", ix.replace('\'', "''"))); // Filter by indexer
+                // --- Validate and Escape indexer ---
+                if !INDEXER_REGEX.is_match(ix) {
+                    return Err("Invalid format for indexer filter".to_string());
+                }
+                let escaped_ix = escape_clickhouse_string_literal(ix);
+                conditions.push(format!("indexer = '{}'", escaped_ix));
+                // --- End Validation ---
             }
-             // No subgraph/allocation filters applicable here
+            // No subgraph filter applicable here
         }
+        // --- End Handle Other Filters ---
 
         let where_clause = format!("WHERE {}", conditions.join(" AND "));
         let query_limit = limit.unwrap_or(1000).clamp(1, 10000);
@@ -686,16 +854,12 @@ impl QueryRoot {
                     SortDirection::Asc => "ASC",
                     SortDirection::Desc => "DESC",
                 };
-                format!("ORDER BY {} {}", s.field.column_name(), direction) // Use IndexerSortField mapping
+                format!("ORDER BY {} {}", s.field.column_name(), direction)
             }
-            None => {
-                // Default sort order
-                "ORDER BY time_bucket DESC, indexer ASC, gateway_id ASC".to_string()
-            }
+            None => "ORDER BY time_bucket DESC, indexer ASC, gateway_id ASC".to_string(),
         };
-        // --- End Build ORDER BY Clause ---
 
-        // Update SELECT list to include all new fields
+        // --- Build and Execute Query ---
         let query = format!(
             "SELECT time_bucket, indexer, gateway_id, \
                     query_count, success_count, failure_count, \
@@ -709,18 +873,18 @@ impl QueryRoot {
              FROM {} {} \
              {} \
              LIMIT {}",
-            view_name, where_clause, order_by_clause, query_limit // Use dynamic order_by_clause
+            view_name, where_clause, order_by_clause, query_limit
         );
 
         println!("Executing query: {}", query);
 
         let rows = client
             .query(&query)
-            .fetch_all::<IndexerAggregationRow>() // Use Indexer Row struct
+            .fetch_all::<IndexerAggregationRow>()
             .await
             .map_err(|e| format!("Database query failed: {}", e))?;
 
-        // Map results (Similar logic, different fields)
+        // Map results (logic remains the same)
         Ok(rows
             .into_iter()
             .map(|row| IndexerAggregationOutput {
@@ -733,29 +897,105 @@ impl QueryRoot {
                 query_count: row.query_count,
                 success_count: row.success_count,
                 failure_count: row.failure_count,
-                // Map all fields, handling Option for NaN/Inf safety
-                avg_indexer_response_time_ms: if row.avg_indexer_response_time_ms.is_finite() { Some(row.avg_indexer_response_time_ms) } else { None },
+                avg_indexer_response_time_ms: if row.avg_indexer_response_time_ms.is_finite() {
+                    Some(row.avg_indexer_response_time_ms)
+                } else {
+                    None
+                },
                 max_indexer_response_time_ms: Some(row.max_indexer_response_time_ms),
-                p90_indexer_response_time_ms: if row.p90_indexer_response_time_ms.is_finite() { Some(row.p90_indexer_response_time_ms) } else { None },
-                p99_indexer_response_time_ms: if row.p99_indexer_response_time_ms.is_finite() { Some(row.p99_indexer_response_time_ms) } else { None },
-                stddev_indexer_response_time_ms: if row.stddev_indexer_response_time_ms.is_finite() { Some(row.stddev_indexer_response_time_ms) } else { None },
-                total_fee_grt: if row.total_fee_grt.is_finite() { Some(row.total_fee_grt) } else { None },
-                avg_fee_grt: if row.avg_fee_grt.is_finite() { Some(row.avg_fee_grt) } else { None },
-                max_fee_grt: if row.max_fee_grt.is_finite() { Some(row.max_fee_grt) } else { None },
-                p90_fee_grt: if row.p90_fee_grt.is_finite() { Some(row.p90_fee_grt) } else { None },
-                p99_fee_grt: if row.p99_fee_grt.is_finite() { Some(row.p99_fee_grt) } else { None },
-                stddev_fee_grt: if row.stddev_fee_grt.is_finite() { Some(row.stddev_fee_grt) } else { None },
-                avg_seconds_behind: if row.avg_seconds_behind.is_finite() { Some(row.avg_seconds_behind) } else { None },
+                p90_indexer_response_time_ms: if row.p90_indexer_response_time_ms.is_finite() {
+                    Some(row.p90_indexer_response_time_ms)
+                } else {
+                    None
+                },
+                p99_indexer_response_time_ms: if row.p99_indexer_response_time_ms.is_finite() {
+                    Some(row.p99_indexer_response_time_ms)
+                } else {
+                    None
+                },
+                stddev_indexer_response_time_ms: if row.stddev_indexer_response_time_ms.is_finite()
+                {
+                    Some(row.stddev_indexer_response_time_ms)
+                } else {
+                    None
+                },
+                total_fee_grt: if row.total_fee_grt.is_finite() {
+                    Some(row.total_fee_grt)
+                } else {
+                    None
+                },
+                avg_fee_grt: if row.avg_fee_grt.is_finite() {
+                    Some(row.avg_fee_grt)
+                } else {
+                    None
+                },
+                max_fee_grt: if row.max_fee_grt.is_finite() {
+                    Some(row.max_fee_grt)
+                } else {
+                    None
+                },
+                p90_fee_grt: if row.p90_fee_grt.is_finite() {
+                    Some(row.p90_fee_grt)
+                } else {
+                    None
+                },
+                p99_fee_grt: if row.p99_fee_grt.is_finite() {
+                    Some(row.p99_fee_grt)
+                } else {
+                    None
+                },
+                stddev_fee_grt: if row.stddev_fee_grt.is_finite() {
+                    Some(row.stddev_fee_grt)
+                } else {
+                    None
+                },
+                avg_seconds_behind: if row.avg_seconds_behind.is_finite() {
+                    Some(row.avg_seconds_behind)
+                } else {
+                    None
+                },
                 max_seconds_behind: Some(row.max_seconds_behind),
-                p90_seconds_behind: if row.p90_seconds_behind.is_finite() { Some(row.p90_seconds_behind) } else { None },
-                p99_seconds_behind: if row.p99_seconds_behind.is_finite() { Some(row.p99_seconds_behind) } else { None },
-                stddev_seconds_behind: if row.stddev_seconds_behind.is_finite() { Some(row.stddev_seconds_behind) } else { None },
-                avg_blocks_behind: if row.avg_blocks_behind.is_finite() { Some(row.avg_blocks_behind) } else { None },
+                p90_seconds_behind: if row.p90_seconds_behind.is_finite() {
+                    Some(row.p90_seconds_behind)
+                } else {
+                    None
+                },
+                p99_seconds_behind: if row.p99_seconds_behind.is_finite() {
+                    Some(row.p99_seconds_behind)
+                } else {
+                    None
+                },
+                stddev_seconds_behind: if row.stddev_seconds_behind.is_finite() {
+                    Some(row.stddev_seconds_behind)
+                } else {
+                    None
+                },
+                avg_blocks_behind: if row.avg_blocks_behind.is_finite() {
+                    Some(row.avg_blocks_behind)
+                } else {
+                    None
+                },
                 max_blocks_behind: Some(row.max_blocks_behind),
-                p90_blocks_behind: if row.p90_blocks_behind.is_finite() { Some(row.p90_blocks_behind) } else { None },
-                p99_blocks_behind: if row.p99_blocks_behind.is_finite() { Some(row.p99_blocks_behind) } else { None },
-                stddev_blocks_behind: if row.stddev_blocks_behind.is_finite() { Some(row.stddev_blocks_behind) } else { None },
-                success_proportion: if row.success_proportion.is_finite() { Some(row.success_proportion) } else { None },
+                p90_blocks_behind: if row.p90_blocks_behind.is_finite() {
+                    Some(row.p90_blocks_behind)
+                } else {
+                    None
+                },
+                p99_blocks_behind: if row.p99_blocks_behind.is_finite() {
+                    Some(row.p99_blocks_behind)
+                } else {
+                    None
+                },
+                stddev_blocks_behind: if row.stddev_blocks_behind.is_finite() {
+                    Some(row.stddev_blocks_behind)
+                } else {
+                    None
+                },
+                success_proportion: if row.success_proportion.is_finite() {
+                    Some(row.success_proportion)
+                } else {
+                    None
+                },
             })
             .collect())
     }
@@ -764,54 +1004,105 @@ impl QueryRoot {
     async fn allocation_aggregations(
         &self,
         _ctx: &Context<'_>,
-        #[graphql(desc = "Aggregation interval (default: Hourly)")] interval: Option<AggregationInterval>,
-        #[graphql(desc = "Time range (RFC3339 format, default: last 24 hours)")] time_range: Option<TimeRangeInput>,
+        #[graphql(desc = "Aggregation interval (default: Hourly)")] interval: Option<
+            AggregationInterval,
+        >,
+        #[graphql(
+            desc = "Optional time range filter. If omitted, defaults to the last 24 hours. \
+                              If provided, requires at least 'from' or 'to'."
+        )]
+        time_range: Option<TimeRangeInput>,
         #[graphql(desc = "Optional filters for the query")] filter: Option<AggregationFilterInput>,
-        #[graphql(desc = "Maximum number of records to return (default 1000, max 10000)")] limit: Option<i32>,
-        #[graphql(desc = "Optional sorting (default: time_bucket DESC)")] sort: Option<AllocationSortInput>, // Use AllocationSortInput
+        #[graphql(desc = "Maximum number of records to return (default 1000, max 10000)")]
+        limit: Option<i32>,
+        #[graphql(desc = "Optional sorting (default: time_bucket DESC)")] sort: Option<
+            AllocationSortInput,
+        >,
     ) -> Result<Vec<AllocationAggregationOutput>, String> {
-         let client = get_clickhouse_client()?;
-
-        // --- Handle Defaults (Similar to deployment_aggregations) ---
+        let client = get_clickhouse_client()?;
         let actual_interval = interval.unwrap_or(AggregationInterval::Hourly);
-        let (from_dt, to_dt) = match time_range {
-             Some(tr) => (
-                DateTime::parse_from_rfc3339(&tr.from)
-                    .map_err(|e| format!("Invalid 'from' timestamp format: {}", e))?
-                    .with_timezone(&Utc),
-                DateTime::parse_from_rfc3339(&tr.to)
-                    .map_err(|e| format!("Invalid 'to' timestamp format: {}", e))?
-                    .with_timezone(&Utc),
-            ),
-            None => {
-                let now = Utc::now();
-                (now - chrono::Duration::hours(24), now)
-            }
-        };
-        // --- End Handle Defaults ---
-
         let view_name = format!("view_agg_allocation_{}", actual_interval.table_suffix());
 
-        // Build WHERE clause (Includes subgraph and indexer filters)
+        // --- Build WHERE clause ---
         let mut conditions = Vec::new();
-        conditions.push(format!(
-            "time_bucket >= toDateTime({})",
-            from_dt.timestamp()
-        ));
-        conditions.push(format!("time_bucket < toDateTime({})", to_dt.timestamp()));
 
+        // --- Handle Time Range (Apply same logic as deployment_aggregations) ---
+        match time_range {
+            None => {
+                let now = Utc::now();
+                let default_from = now - chrono::Duration::hours(24);
+                conditions.push(format!(
+                    "time_bucket >= toDateTime({})",
+                    default_from.timestamp()
+                ));
+                conditions.push(format!("time_bucket < toDateTime({})", now.timestamp()));
+            }
+            Some(tr) => {
+                let parsed_from = tr.from.as_deref().map(parse_datetime_input).transpose()?;
+                let parsed_to = tr.to.as_deref().map(parse_datetime_input).transpose()?;
+
+                match (parsed_from, parsed_to) {
+                    (None, None) => {
+                        return Err(
+                            "Time range filter requires at least 'from' or 'to' to be specified."
+                                .to_string(),
+                        );
+                    }
+                    (Some(from_dt), None) => {
+                        conditions.push(format!(
+                            "time_bucket >= toDateTime({})",
+                            from_dt.timestamp()
+                        ));
+                    }
+                    (None, Some(to_dt)) => {
+                        conditions.push(format!("time_bucket < toDateTime({})", to_dt.timestamp()));
+                    }
+                    (Some(from_dt), Some(to_dt)) => {
+                        if from_dt >= to_dt {
+                            return Err("'from' time must be earlier than 'to' time.".to_string());
+                        }
+                        conditions.push(format!(
+                            "time_bucket >= toDateTime({})",
+                            from_dt.timestamp()
+                        ));
+                        conditions.push(format!("time_bucket < toDateTime({})", to_dt.timestamp()));
+                    }
+                }
+            }
+        }
+        // --- End Handle Time Range ---
+
+        // --- Handle Other Filters (gateway_id, subgraph, indexer) ---
         if let Some(f) = filter {
             if let Some(gw) = &f.gateway_id {
-                 conditions.push(format!("gateway_id = '{}'", gw.replace('\'', "''")));
+                // --- Validate and Escape gateway_id ---
+                if !GATEWAY_ID_REGEX.is_match(gw) {
+                    return Err("Invalid format for gateway_id filter".to_string());
+                }
+                let escaped_gw = escape_clickhouse_string_literal(gw);
+                conditions.push(format!("gateway_id = '{}'", escaped_gw));
+                // --- End Validation ---
             }
-             if let Some(sg) = &f.subgraph {
-                 conditions.push(format!("subgraph = '{}'", sg.replace('\'', "''")));
+            if let Some(sg) = &f.subgraph {
+                // --- Validate and Escape subgraph ---
+                if !SUBGRAPH_REGEX.is_match(sg) {
+                    return Err("Invalid format for subgraph filter".to_string());
+                }
+                let escaped_sg = escape_clickhouse_string_literal(sg);
+                conditions.push(format!("subgraph = '{}'", escaped_sg));
+                // --- End Validation ---
             }
             if let Some(ix) = &f.indexer {
-                 conditions.push(format!("indexer = '{}'", ix.replace('\'', "''")));
+                // --- Validate and Escape indexer ---
+                if !INDEXER_REGEX.is_match(ix) {
+                    return Err("Invalid format for indexer filter".to_string());
+                }
+                let escaped_ix = escape_clickhouse_string_literal(ix);
+                conditions.push(format!("indexer = '{}'", escaped_ix));
+                // --- End Validation ---
             }
-            // Note: Allocation ID filter is not used here as the view aggregates by subgraph/indexer
         }
+        // --- End Handle Other Filters ---
 
         let where_clause = format!("WHERE {}", conditions.join(" AND "));
         let query_limit = limit.unwrap_or(1000).clamp(1, 10000);
@@ -823,16 +1114,14 @@ impl QueryRoot {
                     SortDirection::Asc => "ASC",
                     SortDirection::Desc => "DESC",
                 };
-                format!("ORDER BY {} {}", s.field.column_name(), direction) // Use AllocationSortField mapping
+                format!("ORDER BY {} {}", s.field.column_name(), direction)
             }
             None => {
-                // Default sort order
                 "ORDER BY time_bucket DESC, subgraph ASC, indexer ASC, gateway_id ASC".to_string()
             }
         };
-        // --- End Build ORDER BY Clause ---
 
-        // Query uses the same fields as indexer aggregation but groups differently in the view
+        // --- Build and Execute Query ---
         let query = format!(
             "SELECT time_bucket, subgraph, indexer, gateway_id, \
                     query_count, success_count, failure_count, \
@@ -846,53 +1135,130 @@ impl QueryRoot {
              FROM {} {} \
              {} \
              LIMIT {}",
-            view_name, where_clause, order_by_clause, query_limit // Use dynamic order_by_clause
+            view_name, where_clause, order_by_clause, query_limit
         );
 
         println!("Executing query: {}", query);
 
         let rows = client
             .query(&query)
-            .fetch_all::<AllocationAggregationRow>() // Use Allocation Row struct
+            .fetch_all::<AllocationAggregationRow>()
             .await
             .map_err(|e| format!("Database query failed: {}", e))?;
 
-        // Map results (Identical mapping logic to Indexer, just different input row type)
+        // Map results (logic remains the same)
         Ok(rows
             .into_iter()
             .map(|row| AllocationAggregationOutput {
-                 time_bucket: Utc
+                time_bucket: Utc
                     .timestamp_opt(row.time_bucket as i64, 0)
                     .single()
                     .map_or_else(|| "Invalid Timestamp".to_string(), |dt| dt.to_rfc3339()),
-                subgraph: row.subgraph, // Allocation includes subgraph
+                subgraph: row.subgraph,
                 indexer: row.indexer,
                 gateway_id: row.gateway_id,
                 query_count: row.query_count,
                 success_count: row.success_count,
                 failure_count: row.failure_count,
-                avg_indexer_response_time_ms: if row.avg_indexer_response_time_ms.is_finite() { Some(row.avg_indexer_response_time_ms) } else { None },
+                avg_indexer_response_time_ms: if row.avg_indexer_response_time_ms.is_finite() {
+                    Some(row.avg_indexer_response_time_ms)
+                } else {
+                    None
+                },
                 max_indexer_response_time_ms: Some(row.max_indexer_response_time_ms),
-                p90_indexer_response_time_ms: if row.p90_indexer_response_time_ms.is_finite() { Some(row.p90_indexer_response_time_ms) } else { None },
-                p99_indexer_response_time_ms: if row.p99_indexer_response_time_ms.is_finite() { Some(row.p99_indexer_response_time_ms) } else { None },
-                stddev_indexer_response_time_ms: if row.stddev_indexer_response_time_ms.is_finite() { Some(row.stddev_indexer_response_time_ms) } else { None },
-                total_fee_grt: if row.total_fee_grt.is_finite() { Some(row.total_fee_grt) } else { None },
-                avg_fee_grt: if row.avg_fee_grt.is_finite() { Some(row.avg_fee_grt) } else { None },
-                max_fee_grt: if row.max_fee_grt.is_finite() { Some(row.max_fee_grt) } else { None },
-                p90_fee_grt: if row.p90_fee_grt.is_finite() { Some(row.p90_fee_grt) } else { None },
-                p99_fee_grt: if row.p99_fee_grt.is_finite() { Some(row.p99_fee_grt) } else { None },
-                stddev_fee_grt: if row.stddev_fee_grt.is_finite() { Some(row.stddev_fee_grt) } else { None },
-                avg_seconds_behind: if row.avg_seconds_behind.is_finite() { Some(row.avg_seconds_behind) } else { None },
+                p90_indexer_response_time_ms: if row.p90_indexer_response_time_ms.is_finite() {
+                    Some(row.p90_indexer_response_time_ms)
+                } else {
+                    None
+                },
+                p99_indexer_response_time_ms: if row.p99_indexer_response_time_ms.is_finite() {
+                    Some(row.p99_indexer_response_time_ms)
+                } else {
+                    None
+                },
+                stddev_indexer_response_time_ms: if row.stddev_indexer_response_time_ms.is_finite()
+                {
+                    Some(row.stddev_indexer_response_time_ms)
+                } else {
+                    None
+                },
+                total_fee_grt: if row.total_fee_grt.is_finite() {
+                    Some(row.total_fee_grt)
+                } else {
+                    None
+                },
+                avg_fee_grt: if row.avg_fee_grt.is_finite() {
+                    Some(row.avg_fee_grt)
+                } else {
+                    None
+                },
+                max_fee_grt: if row.max_fee_grt.is_finite() {
+                    Some(row.max_fee_grt)
+                } else {
+                    None
+                },
+                p90_fee_grt: if row.p90_fee_grt.is_finite() {
+                    Some(row.p90_fee_grt)
+                } else {
+                    None
+                },
+                p99_fee_grt: if row.p99_fee_grt.is_finite() {
+                    Some(row.p99_fee_grt)
+                } else {
+                    None
+                },
+                stddev_fee_grt: if row.stddev_fee_grt.is_finite() {
+                    Some(row.stddev_fee_grt)
+                } else {
+                    None
+                },
+                avg_seconds_behind: if row.avg_seconds_behind.is_finite() {
+                    Some(row.avg_seconds_behind)
+                } else {
+                    None
+                },
                 max_seconds_behind: Some(row.max_seconds_behind),
-                p90_seconds_behind: if row.p90_seconds_behind.is_finite() { Some(row.p90_seconds_behind) } else { None },
-                p99_seconds_behind: if row.p99_seconds_behind.is_finite() { Some(row.p99_seconds_behind) } else { None },
-                stddev_seconds_behind: if row.stddev_seconds_behind.is_finite() { Some(row.stddev_seconds_behind) } else { None },
-                avg_blocks_behind: if row.avg_blocks_behind.is_finite() { Some(row.avg_blocks_behind) } else { None },
+                p90_seconds_behind: if row.p90_seconds_behind.is_finite() {
+                    Some(row.p90_seconds_behind)
+                } else {
+                    None
+                },
+                p99_seconds_behind: if row.p99_seconds_behind.is_finite() {
+                    Some(row.p99_seconds_behind)
+                } else {
+                    None
+                },
+                stddev_seconds_behind: if row.stddev_seconds_behind.is_finite() {
+                    Some(row.stddev_seconds_behind)
+                } else {
+                    None
+                },
+                avg_blocks_behind: if row.avg_blocks_behind.is_finite() {
+                    Some(row.avg_blocks_behind)
+                } else {
+                    None
+                },
                 max_blocks_behind: Some(row.max_blocks_behind),
-                p90_blocks_behind: if row.p90_blocks_behind.is_finite() { Some(row.p90_blocks_behind) } else { None },
-                p99_blocks_behind: if row.p99_blocks_behind.is_finite() { Some(row.p99_blocks_behind) } else { None },
-                stddev_blocks_behind: if row.stddev_blocks_behind.is_finite() { Some(row.stddev_blocks_behind) } else { None },
-                success_proportion: if row.success_proportion.is_finite() { Some(row.success_proportion) } else { None },
+                p90_blocks_behind: if row.p90_blocks_behind.is_finite() {
+                    Some(row.p90_blocks_behind)
+                } else {
+                    None
+                },
+                p99_blocks_behind: if row.p99_blocks_behind.is_finite() {
+                    Some(row.p99_blocks_behind)
+                } else {
+                    None
+                },
+                stddev_blocks_behind: if row.stddev_blocks_behind.is_finite() {
+                    Some(row.stddev_blocks_behind)
+                } else {
+                    None
+                },
+                success_proportion: if row.success_proportion.is_finite() {
+                    Some(row.success_proportion)
+                } else {
+                    None
+                },
             })
             .collect())
     }
