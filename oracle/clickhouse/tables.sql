@@ -1,4 +1,8 @@
--- Create the Kafka engine table to ingest Protobuf messages
+-- ============================================================
+-- RAW DATA INGESTION (Kafka -> qos_data)
+-- ============================================================
+
+-- Kafka Engine Table (Queue) - Remains the same
 CREATE TABLE IF NOT EXISTS kafka_qos_data
 (
     gateway_id String,
@@ -32,27 +36,27 @@ SETTINGS
     kafka_group_name = 'clickhouse_qos_consumer',
     kafka_format = 'ProtobufSingle',
     kafka_schema = 'schema.proto:qos.ClientQueryProtobuf',
-    kafka_max_block_size = 1,
-    kafka_poll_timeout_ms = 500;
+    kafka_thread_per_consumer = 1;
 
 -- ============================================================
--- MINUTE-LEVEL AGGREGATION TABLES & MATERIALIZED VIEWS
+-- 5-MINUTE LEVEL AGGREGATION TABLES & MATERIALIZED VIEWS
 -- ============================================================
--- We store aggregate state only at the 1-minute level.
--- Coarser granularities (5min, hourly, daily) are calculated
+-- We store aggregate state at the 5-minute level.
+-- Coarser granularities (hourly, daily) are calculated
 -- on the fly in the final views using -Merge functions.
--- Materialized Views now read directly from kafka_qos_data.
+-- Materialized Views read directly from kafka_qos_data.
 -- ============================================================
 
 -- ----------------------------------------
--- Deployment Level Aggregations (1-Minute State)
+-- Deployment Level Aggregations (5-Minute State)
 -- ----------------------------------------
-CREATE TABLE IF NOT EXISTS agg_deployment_1min
+-- Renamed table from agg_deployment_1min to agg_deployment_5min
+CREATE TABLE IF NOT EXISTS agg_deployment_5min
 (
-    time_bucket DateTime, -- Minute-level bucket
+    time_bucket DateTime, -- 5-Minute level bucket
     subgraph String,
     gateway_id String,
-    -- Aggregate state columns (same as before)
+    -- Aggregate state columns
     query_count AggregateFunction(count),
     success_count AggregateFunction(countIf, UInt8),
     failure_count AggregateFunction(countIf, UInt8),
@@ -67,14 +71,15 @@ CREATE TABLE IF NOT EXISTS agg_deployment_1min
     stddev_fee_usd AggregateFunction(stddevSamp, Float64)
 )
 ENGINE = AggregatingMergeTree
-PARTITION BY toYYYYMM(time_bucket) -- Partitioning is still useful
-ORDER BY (time_bucket, subgraph, gateway_id) -- Grouping keys
-TTL time_bucket + INTERVAL 7 DAY DELETE; -- TTL for 1-minute aggregate state (adjust as needed)
+PARTITION BY toYYYYMM(time_bucket)
+ORDER BY (time_bucket, subgraph, gateway_id);
 
--- MV to populate 1-Minute Deployment Aggregations (Reads from Kafka)
-CREATE MATERIALIZED VIEW IF NOT EXISTS mv_agg_deployment_1min TO agg_deployment_1min AS
+-- Renamed MV from mv_agg_deployment_1min to mv_agg_deployment_5min
+-- Changed TO clause to point to agg_deployment_5min
+-- Changed time bucketing to toStartOfFiveMinute
+CREATE MATERIALIZED VIEW IF NOT EXISTS mv_agg_deployment_5min TO agg_deployment_5min AS
 SELECT
-    toStartOfMinute(now()) AS time_bucket, -- Use 1-minute bucket based on processing time
+    toStartOfFiveMinute(now()) AS time_bucket, -- Use 5-minute bucket
     kq.subgraph,
     kq.gateway_id,
     -- Calculate aggregate states directly from Kafka data
@@ -86,7 +91,7 @@ SELECT
     maxState(kq.response_time_ms) AS max_response_time_ms,
     quantilesState(0.90, 0.99)(kq.response_time_ms) AS quantiles_response_time_ms,
     stddevSampState(kq.response_time_ms) AS stddev_response_time_ms,
-    avgState(kq.total_fees_usd) AS avg_fee_usd, -- Assuming total_fees_usd is per-query fee
+    avgState(kq.total_fees_usd) AS avg_fee_usd,
     maxState(kq.total_fees_usd) AS max_fee_usd,
     quantilesState(0.90, 0.99)(kq.total_fees_usd) AS quantiles_fee_usd,
     stddevSampState(kq.total_fees_usd) AS stddev_fee_usd
@@ -96,11 +101,12 @@ GROUP BY time_bucket, kq.subgraph, kq.gateway_id;
 
 
 -- ----------------------------------------
--- Allocation Level Aggregations (1-Minute State)
+-- Allocation Level Aggregations (5-Minute State)
 -- ----------------------------------------
-CREATE TABLE IF NOT EXISTS agg_allocation_1min
+-- Renamed table from agg_allocation_1min to agg_allocation_5min
+CREATE TABLE IF NOT EXISTS agg_allocation_5min
 (
-    time_bucket DateTime, -- Minute-level bucket
+    time_bucket DateTime, -- 5-Minute level bucket
     subgraph String,
     indexer String, -- HEX encoded
     gateway_id String,
@@ -128,17 +134,18 @@ CREATE TABLE IF NOT EXISTS agg_allocation_1min
 )
 ENGINE = AggregatingMergeTree
 PARTITION BY toYYYYMM(time_bucket)
-ORDER BY (time_bucket, subgraph, indexer, gateway_id) -- Grouping keys
-TTL time_bucket + INTERVAL 7 DAY DELETE; -- TTL for 1-minute aggregate state
+ORDER BY (time_bucket, subgraph, indexer, gateway_id); -- Grouping keys
 
--- MV to populate 1-Minute Allocation Aggregations (Reads from Kafka)
-CREATE MATERIALIZED VIEW IF NOT EXISTS mv_agg_allocation_1min TO agg_allocation_1min AS
+-- Renamed MV from mv_agg_allocation_1min to mv_agg_allocation_5min
+-- Changed TO clause to point to agg_allocation_5min
+-- Changed time bucketing to toStartOfFiveMinute
+CREATE MATERIALIZED VIEW IF NOT EXISTS mv_agg_allocation_5min TO agg_allocation_5min AS
 SELECT
-    toStartOfMinute(now()) AS time_bucket, -- Use 1-minute bucket based on processing time
+    toStartOfFiveMinute(now()) AS time_bucket, -- Use 5-minute bucket
     kq.subgraph,
     HEX(iq.indexer) AS indexer, -- Apply HEX encoding here
     kq.gateway_id,
-    -- Calculate aggregate states directly from Kafka data
+    -- Calculate aggregate states directly from Kafka data and nested indexer_queries
     countState() AS query_count,
     countIfState(iq.result = 'success') AS success_count,
     countIfState(iq.result != 'success') AS failure_count,
@@ -160,20 +167,21 @@ SELECT
     quantilesState(0.90, 0.99)(iq.blocks_behind) AS quantiles_blocks_behind,
     stddevSampState(iq.blocks_behind) AS stddev_blocks_behind
 FROM kafka_qos_data AS kq -- Read directly from Kafka table
-ARRAY JOIN indexer_queries AS iq
-WHERE kq.subgraph IS NOT NULL AND length(iq.indexer) > 0
+ARRAY JOIN indexer_queries AS iq -- Join with nested data
+WHERE kq.subgraph IS NOT NULL AND length(iq.indexer) > 0 -- Ensure subgraph and indexer are present
 GROUP BY time_bucket, kq.subgraph, indexer, kq.gateway_id; -- Group by HEX encoded indexer
 
 
 -- ----------------------------------------
--- Indexer Level Aggregations (1-Minute State)
+-- Indexer Level Aggregations (5-Minute State)
 -- ----------------------------------------
-CREATE TABLE IF NOT EXISTS agg_indexer_1min
+-- Renamed table from agg_indexer_1min to agg_indexer_5min
+CREATE TABLE IF NOT EXISTS agg_indexer_5min
 (
-    time_bucket DateTime, -- Minute-level bucket
+    time_bucket DateTime, -- 5-Minute level bucket
     indexer String, -- HEX encoded
     gateway_id String,
-    -- Aggregate state columns (same structure as allocation, but grouped differently)
+    -- Aggregate state columns
     query_count AggregateFunction(count),
     success_count AggregateFunction(countIf, UInt8),
     failure_count AggregateFunction(countIf, UInt8),
@@ -197,13 +205,14 @@ CREATE TABLE IF NOT EXISTS agg_indexer_1min
 )
 ENGINE = AggregatingMergeTree
 PARTITION BY toYYYYMM(time_bucket)
-ORDER BY (time_bucket, indexer, gateway_id) -- Grouping keys
-TTL time_bucket + INTERVAL 7 DAY DELETE; -- TTL for 1-minute aggregate state
+ORDER BY (time_bucket, indexer, gateway_id); -- Grouping keys
 
--- MV to populate 1-Minute Indexer Aggregations (Reads from Kafka)
-CREATE MATERIALIZED VIEW IF NOT EXISTS mv_agg_indexer_1min TO agg_indexer_1min AS
+-- Renamed MV from mv_agg_indexer_1min to mv_agg_indexer_5min
+-- Changed TO clause to point to agg_indexer_5min
+-- Changed time bucketing to toStartOfFiveMinute
+CREATE MATERIALIZED VIEW IF NOT EXISTS mv_agg_indexer_5min TO agg_indexer_5min AS
 SELECT
-    toStartOfMinute(now()) AS time_bucket, -- Use 1-minute bucket based on processing time
+    toStartOfFiveMinute(now()) AS time_bucket, -- Use 5-minute bucket
     HEX(iq.indexer) AS indexer, -- Apply HEX encoding here
     kq.gateway_id,
     -- Calculate aggregate states directly from Kafka data
@@ -236,7 +245,7 @@ GROUP BY time_bucket, indexer, kq.gateway_id; -- Group by HEX encoded indexer
 -- ============================================================
 -- FINAL AGGREGATION VIEWS (for GraphQL API)
 -- ============================================================
--- These views read from the 1-minute aggregate state tables
+-- These views read from the 5-minute aggregate state tables
 -- and compute the final results for the desired time granularity
 -- (5min, hourly, daily) on the fly using -Merge functions.
 -- ============================================================
@@ -246,12 +255,14 @@ GROUP BY time_bucket, indexer, kq.gateway_id; -- Group by HEX encoded indexer
 -- ----------------------------------------
 
 -- View for Final 5-Minute Deployment Aggregations
+-- Updated FROM clause to read from agg_deployment_5min
 CREATE VIEW IF NOT EXISTS view_agg_deployment_5min AS
 WITH AggregatedValues AS (
     SELECT
-        toStartOfFiveMinute(time_bucket) AS final_time_bucket,
+        time_bucket AS final_time_bucket, -- Already at 5-minute level
         subgraph,
         gateway_id,
+        -- Merge the 5-minute states (often just one state per group here)
         countMerge(query_count) AS final_query_count,
         countIfMerge(success_count) AS final_success_count,
         countIfMerge(failure_count) AS final_failure_count,
@@ -264,8 +275,8 @@ WITH AggregatedValues AS (
         maxMerge(max_fee_usd) AS final_max_fee_usd,
         quantilesMerge(0.90, 0.99)(quantiles_fee_usd) AS final_quantiles_fee_usd,
         stddevSampMerge(stddev_fee_usd) AS final_stddev_fee_usd
-    FROM agg_deployment_1min
-    GROUP BY final_time_bucket, subgraph, gateway_id
+    FROM agg_deployment_5min -- Read from the 5-minute state table
+    GROUP BY final_time_bucket, subgraph, gateway_id -- Group by 5-minute bucket and dimensions
 )
 SELECT
     final_time_bucket AS time_bucket,
@@ -289,12 +300,14 @@ SELECT
 FROM AggregatedValues;
 
 -- View for Final Hourly Deployment Aggregations
+-- Updated FROM clause to read from agg_deployment_5min
 CREATE VIEW IF NOT EXISTS view_agg_deployment_hourly AS
 WITH AggregatedValues AS (
     SELECT
-        toStartOfHour(time_bucket) AS final_time_bucket,
+        toStartOfHour(time_bucket) AS final_time_bucket, -- Group 5min buckets into hourly
         subgraph,
         gateway_id,
+        -- Merge the 5-minute states
         countMerge(query_count) AS final_query_count,
         countIfMerge(success_count) AS final_success_count,
         countIfMerge(failure_count) AS final_failure_count,
@@ -307,8 +320,8 @@ WITH AggregatedValues AS (
         maxMerge(max_fee_usd) AS final_max_fee_usd,
         quantilesMerge(0.90, 0.99)(quantiles_fee_usd) AS final_quantiles_fee_usd,
         stddevSampMerge(stddev_fee_usd) AS final_stddev_fee_usd
-    FROM agg_deployment_1min
-    GROUP BY final_time_bucket, subgraph, gateway_id
+    FROM agg_deployment_5min -- Read from the 5-minute state table
+    GROUP BY final_time_bucket, subgraph, gateway_id -- Group by hourly bucket and dimensions
 )
 SELECT
     final_time_bucket AS time_bucket,
@@ -332,12 +345,14 @@ SELECT
 FROM AggregatedValues;
 
 -- View for Final Daily Deployment Aggregations
+-- Updated FROM clause to read from agg_deployment_5min
 CREATE VIEW IF NOT EXISTS view_agg_deployment_daily AS
 WITH AggregatedValues AS (
     SELECT
-        toStartOfDay(time_bucket) AS final_time_bucket,
+        toStartOfDay(time_bucket) AS final_time_bucket, -- Group 5min buckets into daily
         subgraph,
         gateway_id,
+        -- Merge the 5-minute states
         countMerge(query_count) AS final_query_count,
         countIfMerge(success_count) AS final_success_count,
         countIfMerge(failure_count) AS final_failure_count,
@@ -350,8 +365,8 @@ WITH AggregatedValues AS (
         maxMerge(max_fee_usd) AS final_max_fee_usd,
         quantilesMerge(0.90, 0.99)(quantiles_fee_usd) AS final_quantiles_fee_usd,
         stddevSampMerge(stddev_fee_usd) AS final_stddev_fee_usd
-    FROM agg_deployment_1min
-    GROUP BY final_time_bucket, subgraph, gateway_id
+    FROM agg_deployment_5min -- Read from the 5-minute state table
+    GROUP BY final_time_bucket, subgraph, gateway_id -- Group by daily bucket and dimensions
 )
 SELECT
     final_time_bucket AS time_bucket,
@@ -380,13 +395,15 @@ FROM AggregatedValues;
 -- ----------------------------------------
 
 -- View for Final 5-Minute Allocation Aggregations
+-- Updated FROM clause to read from agg_allocation_5min
 CREATE VIEW IF NOT EXISTS view_agg_allocation_5min AS
 WITH AggregatedValues AS (
     SELECT
-        toStartOfFiveMinute(time_bucket) AS final_time_bucket,
+        time_bucket AS final_time_bucket, -- Already at 5-minute level
         subgraph,
         indexer,
         gateway_id,
+        -- Merge the 5-minute states
         countMerge(query_count) AS final_query_count,
         countIfMerge(success_count) AS final_success_count,
         countIfMerge(failure_count) AS final_failure_count,
@@ -407,8 +424,8 @@ WITH AggregatedValues AS (
         maxMerge(max_blocks_behind) AS final_max_blocks_behind,
         quantilesMerge(0.90, 0.99)(quantiles_blocks_behind) AS final_quantiles_blocks_behind,
         stddevSampMerge(stddev_blocks_behind) AS final_stddev_blocks_behind
-    FROM agg_allocation_1min
-    GROUP BY final_time_bucket, subgraph, indexer, gateway_id
+    FROM agg_allocation_5min -- Read from the 5-minute state table
+    GROUP BY final_time_bucket, subgraph, indexer, gateway_id -- Group by 5-minute bucket and dimensions
 )
 SELECT
     final_time_bucket AS time_bucket,
@@ -443,13 +460,15 @@ SELECT
 FROM AggregatedValues;
 
 -- View for Final Hourly Allocation Aggregations
+-- Updated FROM clause to read from agg_allocation_5min
 CREATE VIEW IF NOT EXISTS view_agg_allocation_hourly AS
 WITH AggregatedValues AS (
     SELECT
-        toStartOfHour(time_bucket) AS final_time_bucket,
+        toStartOfHour(time_bucket) AS final_time_bucket, -- Group 5min buckets into hourly
         subgraph,
         indexer,
         gateway_id,
+        -- Merge the 5-minute states
         countMerge(query_count) AS final_query_count,
         countIfMerge(success_count) AS final_success_count,
         countIfMerge(failure_count) AS final_failure_count,
@@ -470,8 +489,8 @@ WITH AggregatedValues AS (
         maxMerge(max_blocks_behind) AS final_max_blocks_behind,
         quantilesMerge(0.90, 0.99)(quantiles_blocks_behind) AS final_quantiles_blocks_behind,
         stddevSampMerge(stddev_blocks_behind) AS final_stddev_blocks_behind
-    FROM agg_allocation_1min
-    GROUP BY final_time_bucket, subgraph, indexer, gateway_id
+    FROM agg_allocation_5min -- Read from the 5-minute state table
+    GROUP BY final_time_bucket, subgraph, indexer, gateway_id -- Group by hourly bucket and dimensions
 )
 SELECT
     final_time_bucket AS time_bucket,
@@ -506,13 +525,15 @@ SELECT
 FROM AggregatedValues;
 
 -- View for Final Daily Allocation Aggregations
+-- Updated FROM clause to read from agg_allocation_5min
 CREATE VIEW IF NOT EXISTS view_agg_allocation_daily AS
 WITH AggregatedValues AS (
     SELECT
-        toStartOfDay(time_bucket) AS final_time_bucket,
+        toStartOfDay(time_bucket) AS final_time_bucket, -- Group 5min buckets into daily
         subgraph,
         indexer,
         gateway_id,
+        -- Merge the 5-minute states
         countMerge(query_count) AS final_query_count,
         countIfMerge(success_count) AS final_success_count,
         countIfMerge(failure_count) AS final_failure_count,
@@ -533,8 +554,8 @@ WITH AggregatedValues AS (
         maxMerge(max_blocks_behind) AS final_max_blocks_behind,
         quantilesMerge(0.90, 0.99)(quantiles_blocks_behind) AS final_quantiles_blocks_behind,
         stddevSampMerge(stddev_blocks_behind) AS final_stddev_blocks_behind
-    FROM agg_allocation_1min
-    GROUP BY final_time_bucket, subgraph, indexer, gateway_id
+    FROM agg_allocation_5min -- Read from the 5-minute state table
+    GROUP BY final_time_bucket, subgraph, indexer, gateway_id -- Group by daily bucket and dimensions
 )
 SELECT
     final_time_bucket AS time_bucket,
@@ -574,12 +595,14 @@ FROM AggregatedValues;
 -- ----------------------------------------
 
 -- View for Final 5-Minute Indexer Aggregations
+-- Updated FROM clause to read from agg_indexer_5min
 CREATE VIEW IF NOT EXISTS view_agg_indexer_5min AS
 WITH AggregatedValues AS (
     SELECT
-        toStartOfFiveMinute(time_bucket) AS final_time_bucket,
+        time_bucket AS final_time_bucket, -- Already at 5-minute level
         indexer,
         gateway_id,
+        -- Merge the 5-minute states
         countMerge(query_count) AS final_query_count,
         countIfMerge(success_count) AS final_success_count,
         countIfMerge(failure_count) AS final_failure_count,
@@ -600,8 +623,8 @@ WITH AggregatedValues AS (
         maxMerge(max_blocks_behind) AS final_max_blocks_behind,
         quantilesMerge(0.90, 0.99)(quantiles_blocks_behind) AS final_quantiles_blocks_behind,
         stddevSampMerge(stddev_blocks_behind) AS final_stddev_blocks_behind
-    FROM agg_indexer_1min
-    GROUP BY final_time_bucket, indexer, gateway_id
+    FROM agg_indexer_5min -- Read from the 5-minute state table
+    GROUP BY final_time_bucket, indexer, gateway_id -- Group by 5-minute bucket and dimensions
 )
 SELECT
     final_time_bucket AS time_bucket,
@@ -635,12 +658,14 @@ SELECT
 FROM AggregatedValues;
 
 -- View for Final Hourly Indexer Aggregations
+-- Updated FROM clause to read from agg_indexer_5min
 CREATE VIEW IF NOT EXISTS view_agg_indexer_hourly AS
 WITH AggregatedValues AS (
     SELECT
-        toStartOfHour(time_bucket) AS final_time_bucket,
+        toStartOfHour(time_bucket) AS final_time_bucket, -- Group 5min buckets into hourly
         indexer,
         gateway_id,
+        -- Merge the 5-minute states
         countMerge(query_count) AS final_query_count,
         countIfMerge(success_count) AS final_success_count,
         countIfMerge(failure_count) AS final_failure_count,
@@ -661,8 +686,8 @@ WITH AggregatedValues AS (
         maxMerge(max_blocks_behind) AS final_max_blocks_behind,
         quantilesMerge(0.90, 0.99)(quantiles_blocks_behind) AS final_quantiles_blocks_behind,
         stddevSampMerge(stddev_blocks_behind) AS final_stddev_blocks_behind
-    FROM agg_indexer_1min
-    GROUP BY final_time_bucket, indexer, gateway_id
+    FROM agg_indexer_5min -- Read from the 5-minute state table
+    GROUP BY final_time_bucket, indexer, gateway_id -- Group by hourly bucket and dimensions
 )
 SELECT
     final_time_bucket AS time_bucket,
@@ -696,12 +721,14 @@ SELECT
 FROM AggregatedValues;
 
 -- View for Final Daily Indexer Aggregations
+-- Updated FROM clause to read from agg_indexer_5min
 CREATE VIEW IF NOT EXISTS view_agg_indexer_daily AS
 WITH AggregatedValues AS (
     SELECT
-        toStartOfDay(time_bucket) AS final_time_bucket,
+        toStartOfDay(time_bucket) AS final_time_bucket, -- Group 5min buckets into daily
         indexer,
         gateway_id,
+        -- Merge the 5-minute states
         countMerge(query_count) AS final_query_count,
         countIfMerge(success_count) AS final_success_count,
         countIfMerge(failure_count) AS final_failure_count,
@@ -722,8 +749,8 @@ WITH AggregatedValues AS (
         maxMerge(max_blocks_behind) AS final_max_blocks_behind,
         quantilesMerge(0.90, 0.99)(quantiles_blocks_behind) AS final_quantiles_blocks_behind,
         stddevSampMerge(stddev_blocks_behind) AS final_stddev_blocks_behind
-    FROM agg_indexer_1min
-    GROUP BY final_time_bucket, indexer, gateway_id
+    FROM agg_indexer_5min -- Read from the 5-minute state table
+    GROUP BY final_time_bucket, indexer, gateway_id -- Group by daily bucket and dimensions
 )
 SELECT
     final_time_bucket AS time_bucket,

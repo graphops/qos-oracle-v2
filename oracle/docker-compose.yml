@@ -109,7 +109,7 @@ services:
       - ./clickhouse/schema.proto:/app/clickhouse/schema.proto:ro
     environment:
       KAFKA_BROKER: redpanda:9092
-      MESSAGES_PER_SECOND: 5
+      MESSAGES_PER_SECOND: 1000
     restart: on-failure
     healthcheck:
       <<: *default-healthcheck

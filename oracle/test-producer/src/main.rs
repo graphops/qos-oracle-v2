@@ -524,9 +524,6 @@ async fn main() {
         // Encode using the gateway's exact logic
         let encoded_message = encode_client_request(client_request);
 
-        println!("Encoded message: {} ", hex::encode(&encoded_message));
-        println!("Encoded message size: {} bytes", encoded_message.len());
-
         counter += 1;
 
         match producer
