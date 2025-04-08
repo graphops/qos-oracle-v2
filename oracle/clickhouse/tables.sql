@@ -36,7 +36,8 @@ SETTINGS
     kafka_group_name = 'clickhouse_qos_consumer',
     kafka_format = 'ProtobufSingle',
     kafka_schema = 'schema.proto:qos.ClientQueryProtobuf',
-    kafka_thread_per_consumer = 1;
+    kafka_thread_per_consumer = 1,
+    kafka_flush_interval_ms = 2500;
 
 -- ============================================================
 -- 5-MINUTE LEVEL AGGREGATION TABLES & MATERIALIZED VIEWS

@@ -10,6 +10,7 @@ use rdkafka::util::get_rdkafka_version;
 use tokio::time;
 use once_cell::sync::Lazy;
 use rand::seq::SliceRandom;
+use num_cpus;
 
 // Mock types to match the gateway's dependencies
 mod mock {
@@ -477,68 +478,138 @@ fn encode_client_request(
     buf
 }
 
+// --- NEW: Asynchronous function to run in each producer task ---
+async fn produce_messages(producer: FutureProducer, topic: String, task_id: u32, delay_micros: u64) {
+    let mut counter: u64 = 0;
+    println!("[Task {}] Starting producer loop", task_id);
+
+    loop {
+        // --- Use existing message generation logic ---
+        let client_request = generate_random_client_request();
+        let payload = encode_client_request(client_request);
+        // --- End Use existing message generation logic ---
+
+        // Use a simple counter or a field from the request for the key
+        // to help distribute messages across partitions.
+        // Using modulo is okay for basic distribution.
+        let key = format!("key-{}", counter % 100);
+
+        // Send asynchronously - *DO NOT* await the future here in the loop!
+        let send_future = producer.send_result(
+            FutureRecord::to(&topic)
+                .payload(&payload)
+                .key(&key),
+        );
+
+        // Check for immediate queuing errors (e.g., queue full).
+        if let Err((e, _)) = send_future {
+            eprintln!("[Task {}] Failed to queue message (queue full?): {:?}. Pausing...", task_id, e);
+            // Pause briefly if the producer queue is full to avoid overwhelming it.
+            time::sleep(Duration::from_millis(100)).await;
+            // Optionally: break or implement more robust backoff
+        }
+
+        counter += 1;
+
+        // Apply throttling delay if configured
+        if delay_micros > 0 {
+            time::sleep(Duration::from_micros(delay_micros)).await;
+        } else {
+            // Yield control occasionally if the loop is extremely tight (no throttling)
+            if counter % 1000 == 0 {
+                tokio::task::yield_now().await;
+            }
+        }
+    }
+}
+
+// --- NEW: Updated main function using Tokio ---
 #[tokio::main]
 async fn main() {
     // Print librdkafka version
     let (version_n, version_s) = get_rdkafka_version();
     println!("rd_kafka_version: 0x{:08x}, {}", version_n, version_s);
 
-    // Read messages per second from the environment variable; default to 10 if not provided.
-    let mps: u64 = env::var("MESSAGES_PER_SECOND")
-        .unwrap_or_else(|_| "10".to_string())
+    // --- Configuration ---
+    // Read target total messages per second (informational, not used for delay)
+    let total_mps: u64 = env::var("MESSAGES_PER_SECOND")
+        .unwrap_or_else(|_| "10000".to_string()) // Default to 10k
         .parse()
         .expect("MESSAGES_PER_SECOND must be a valid number");
-    let delay = Duration::from_micros(1_000_000 / mps);
 
-    // Allow configuring the broker address from environment
+    // Determine number of producer tasks (use logical cores)
+    let num_tasks = num_cpus::get().max(1);
+    println!("Target MPS: {}, Spawning {} producer tasks", total_mps, num_tasks);
+
+    // Calculate delay per task to achieve target MPS
+    // Each task needs to wait `num_tasks` times longer than the overall target interval
+    let delay_per_task_micros = if total_mps > 0 {
+        (1_000_000 * num_tasks as u64) / total_mps
+    } else {
+        0 // No delay if target MPS is 0 (run as fast as possible)
+    };
+    if delay_per_task_micros > 0 {
+        println!(
+            "[Config] Throttling enabled: Each task will pause for {} microseconds.",
+            delay_per_task_micros
+        );
+    } else {
+        println!("[Config] Throttling disabled (MESSAGES_PER_SECOND=0 or not set appropriately). Running at max speed.");
+    }
+
     let broker = env::var("KAFKA_BROKER").unwrap_or_else(|_| "redpanda:9092".to_string());
+    let topic = "gateway_qos_topic".to_string(); // Ensure this matches ClickHouse
 
     println!("Connecting to Kafka broker at {}", broker);
-
-    // Wait for Redpanda to be fully ready
     println!("Waiting 5 seconds for Redpanda to initialize...");
     time::sleep(Duration::from_secs(5)).await;
 
-    // Create a Kafka producer with explicit PLAINTEXT protocol
+    // --- Producer Setup ---
+    // Configure the Kafka producer client
     let producer: FutureProducer = ClientConfig::new()
         .set("bootstrap.servers", &broker)
-        .set("message.timeout.ms", "30000")
+        .set("message.timeout.ms", "30000") // Max time librdkafka tries to send one message
         .set("security.protocol", "PLAINTEXT")
-        .set("debug", "all")
-        .set("enable.idempotence", "false") // Simplify for testing
-        .set("retries", "5") // Retry a few times
-        .set("retry.backoff.ms", "1000") // 1 second between retries
-        .set("socket.timeout.ms", "10000") // 10 seconds socket timeout
+        // .set("debug", "all") // Disable verbose debugging for performance testing
+        .set("enable.idempotence", "false") // Disable for max throughput test (less overhead)
+        .set("retries", "5")                // Retries for recoverable send failures
+        .set("retry.backoff.ms", "100")     // Backoff between retries (reduced for faster recovery)
+        .set("socket.timeout.ms", "10000")
         .set("socket.keepalive.enable", "true")
+        // --- Batching Configuration (Crucial for Throughput) ---
+        .set("linger.ms", "5") // Wait up to 5ms to gather messages into a batch
+        .set("batch.size", "131072") // Batch size in bytes (e.g., 128 KB). Tune based on avg message size.
+        // --- Buffering Configuration (Increase if producer blocks/errors often) ---
+        .set("queue.buffering.max.messages", "500000") // Max messages in internal producer queue
+        .set("queue.buffering.max.ms", "1000") // Max time msgs wait in queue before send() blocks/errors
+        // --- Optional: Compression (Reduces network bandwidth, increases CPU) ---
+        // .set("compression.codec", "snappy") // or lz4, gzip, zstd
         .create()
         .expect("Producer creation error");
 
-    // Make sure this matches the topic name in ClickHouse Kafka engine
-    let topic = "gateway_qos_topic";
-    let mut counter: u64 = 0;
+    // --- Spawn Producer Tasks ---
+    let mut tasks = vec![];
+    println!("Spawning {} producer tasks...", num_tasks);
+    for i in 0..num_tasks {
+        let producer_clone = producer.clone(); // Clone producer for each task
+        let topic_clone = topic.clone();
+        tasks.push(tokio::spawn(produce_messages(
+            producer_clone,
+            topic_clone,
+            i as u32,
+            delay_per_task_micros, // Pass the calculated delay
+        )));
+    }
 
-    loop {
-        // Generate a random client request
-        let client_request = generate_random_client_request();
-
-        // Encode using the gateway's exact logic
-        let encoded_message = encode_client_request(client_request);
-
-        counter += 1;
-
-        match producer
-            .send(
-                FutureRecord::to(topic)
-                    .payload(&encoded_message)
-                    .key(&format!("{}", counter)),
-                Duration::from_secs(0),
-            )
-            .await
-        {
-            Ok((partition, offset)) => println!("Delivered: ({}, {})", partition, offset),
-            Err((e, _)) => eprintln!("Delivery error: {:?}", e),
+    // --- Keep Main Task Alive ---
+    println!(
+        "Producer tasks running. Sending to topic '{}'. Press Ctrl+C to stop.",
+        topic
+    );
+    // Wait for all tasks to complete (they run infinitely, so this waits forever unless they error out)
+    for task in tasks {
+        if let Err(e) = task.await {
+            eprintln!("Producer task failed: {:?}", e);
         }
-        // Sleep for the configured delay
-        time::sleep(delay).await;
     }
 }
