@@ -1,1 +1,0 @@
-# Qos Oracle V2

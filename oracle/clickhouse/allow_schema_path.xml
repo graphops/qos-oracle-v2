@@ -1,0 +1,11 @@
+<clickhouse>
+    <path>/var/lib/clickhouse/</path>
+    <tmp_path>/var/lib/clickhouse/tmp/</tmp_path>
+    <user_files_path>/var/lib/clickhouse/user_files/</user_files_path>
+    <format_schema_path>/etc/clickhouse-server/</format_schema_path>
+    <users>
+        <default>
+            <allow_file_truncation>0</allow_file_truncation>
+        </default>
+    </users>
+</clickhouse> 

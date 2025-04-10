@@ -1,0 +1,198 @@
+# QoS Oracle - Data pipeline for The Graph Network quality metrics
+# Common configuration blocks
+x-default-healthcheck: &default-healthcheck
+  interval: 10s
+  timeout: 5s
+  retries: 3
+
+x-clickhouse-env: &clickhouse-env
+  CLICKHOUSE_DB: default
+  CLICKHOUSE_USER: graphql
+  CLICKHOUSE_PASSWORD: graphql_password
+
+# Services
+services:
+  # Core dependencies
+  clickhouse-server:
+    image: clickhouse/clickhouse-server:25.3
+    profiles: [all, deps, dev]
+    expose:
+      - "8123"  # HTTP interface
+      - "9000"  # Native protocol
+      - "9363"  # Prometheus
+    ports:
+      - "8123:8123"  # HTTP: queries/monitoring
+      - "9000:9000"  # Native: client connections
+      - "9363:9363"  # Prometheus
+    volumes:
+      - ./clickhouse/schema.proto:/etc/clickhouse-server/schema.proto:ro
+      - ./clickhouse/tables.sql:/docker-entrypoint-initdb.d/tables.sql:ro
+      - ./clickhouse/allow_schema_path.xml:/etc/clickhouse-server/config.d/allow_schema_path.xml:ro
+      - ./clickhouse/settings.xml:/etc/clickhouse-server/config.d/settings.xml:ro
+      - ./clickhouse/users.xml:/etc/clickhouse-server/users.d/users.xml:ro
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+
+  redpanda:
+    image: redpandadata/redpanda:latest
+    profiles: [all, deps, dev]
+    expose:
+      - "9092"   # Kafka API
+      - "8082"   # Pandaproxy HTTP
+      - "9644"   # Prometheus metrics
+    ports:
+      - "9092:9092" # Kafka: producer/consumer
+      - "9644:9644"
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --memory=1G
+      - --reserve-memory=0M
+      - --overprovisioned
+      - --node-id=0
+      - --check=false
+      - --pandaproxy-addr=0.0.0.0:8082
+      - --advertise-pandaproxy-addr=redpanda:8082
+      - --kafka-addr=0.0.0.0:9092
+      - --advertise-kafka-addr=redpanda:9092
+      - --rpc-addr=0.0.0.0:33145
+      - --advertise-rpc-addr=redpanda:33145
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data:delegated  # data: container writes
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      start_period: 30s  # Redpanda needs more time to initialize
+    environment:
+      REDPANDA_RPC_SERVER_LISTEN_ADDR: 0.0.0.0
+      REDPANDA_KAFKA_ADDRESS: 0.0.0.0:9092
+
+  # Application services
+  graphql-api:
+    build:
+      context: ./graphql-api
+    profiles: [all, dev]
+    expose:
+      - "8000"  # GraphQL API
+    ports:
+      - "8000:8000"  # API: external access
+    depends_on:
+      clickhouse-server:
+        condition: service_healthy
+    environment:
+      <<: *clickhouse-env
+      CLICKHOUSE_URL: http://clickhouse-server:8123
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+
+  # Test/development tools
+  test-producer:
+    build:
+      context: .
+      dockerfile: ./test-producer/Dockerfile
+    profiles: [all, dev]
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      clickhouse-server:
+        condition: service_healthy
+    volumes:
+      - ./clickhouse/schema.proto:/app/clickhouse/schema.proto:ro
+    environment:
+      KAFKA_BROKER: redpanda:9092
+      MESSAGES_PER_SECOND: 50000
+    restart: on-failure
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD-SHELL", "ps aux | grep -v grep | grep -q qos_kafka_producer || exit 1"]
+
+  redpanda-console:
+    profiles: [all, dev]
+    image: redpandadata/console:latest
+    container_name: redpanda-console
+    depends_on:
+      - redpanda
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+      PROTOBUF_ENABLED: "true"
+    volumes:
+      - ./clickhouse/schema.proto:/etc/redpanda/protobuf/schema.proto:ro
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:8080 || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # Observability: Prometheus + Grafana
+  prometheus:
+    profiles: [all, deps]
+    image: prom/prometheus:latest
+    container_name: prometheus
+    depends_on:
+      - redpanda
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      # This volume will store TSDB data so metrics persist across restarts
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'   # Example retention: 7 days
+      - '--web.enable-lifecycle'            # If you want to allow config reload via HTTP
+    expose:
+      - "9090"
+    ports:
+      - '9090:9090'
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:9090/-/healthy || exit 1"]
+      start_period: 10s
+
+  grafana:
+    profiles: [all, deps]
+    image: grafana/grafana:latest
+    container_name: grafana
+    depends_on:
+      - prometheus
+    environment:
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+      GF_AUTH_ANONYMOUS_ENABLED: true
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_BASIC_ENABLED: false
+    expose:
+      - "3000"
+    ports:
+      - "3000:3000"
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
+      start_period: 10s
+    volumes:
+      - ./grafana/provisioning/:/etc/grafana/provisioning/
+      - ./grafana/dashboards/:/var/lib/grafana/dashboards/
+
+# Persistent volumes
+volumes:
+  clickhouse_data:
+    driver: local
+  clickhouse_logs:
+  redpanda_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  grafana_provisioning:
+    driver: local
